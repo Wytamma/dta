@@ -1,0 +1,71 @@
+# Load configuration
+configfile: "config.yaml"
+
+SNAKE_DIR = Path(workflow.basedir)
+ENVS_DIR = SNAKE_DIR / "envs"
+SCRIPTS_DIR = SNAKE_DIR / "scripts"
+TEMPLATES_DIR = SNAKE_DIR / "templates"
+
+NAME = config["prefix"]
+
+# Rule to define the final output
+rule all:
+    input:
+       f"{NAME}.log_Location.png",
+
+rule copy_input_files:
+    input:
+        config["input_trees"]
+    output:
+        f"{NAME}.input.trees"
+    shell: "cp {input} {output}"
+
+# Step 2: Generate BEAST XML using the extracted taxa and Jinja2 template
+rule generate_beast_xml:
+    input:
+        template=config.get("template") if config.get("template") else TEMPLATES_DIR / "beast_template.xml.j2",
+        input_trees=rules.copy_input_files.output,
+    output:
+        xml=f"{NAME}.xml"
+    conda:
+        ENVS_DIR / "python.yml"
+    params:
+        chain_length=config["beast"].get("chain_length", 50000000),
+        sample_every=int(config["beast"].get("chain_length", 50000000) / config["beast"].get("samples", 10000)),
+        name=Path(NAME).stem
+    shell: """
+        python {SCRIPTS_DIR}/generate_beast_xml.py \
+            --input_template {input.template} \
+            --input_trees {input.input_trees} \
+            --output_xml {output.xml} \
+            --chain_length {params.chain_length} \
+            --sample_every {params.sample_every} \
+            --name {params.name}
+        """
+
+rule run_beast:
+    input:
+        beast_XML_file = rules.generate_beast_xml.output.xml,
+    output:
+        beast_stdout_file = f"{NAME}.stdout",
+        beast_log_file = f"{NAME}.log",
+        beast_trees_file =  f"{NAME}.trees",
+    threads: config["beast"].get("threads", 1)
+    conda:
+        ENVS_DIR / "beast.yml"
+    shell: """
+        beast -working -overwrite -beagle_GPU -threads {threads} {input.beast_XML_file} > {output.beast_stdout_file}
+        """
+
+rule plot_results:
+    input:
+        beast_log_file = rules.run_beast.output.beast_log_file,
+    output:
+        f"{NAME}.log_Location.png",
+    conda:
+        ENVS_DIR / "python.yml"
+    shell: """
+        python {SCRIPTS_DIR}/violinplot.py {input.beast_log_file}
+        """
+
+

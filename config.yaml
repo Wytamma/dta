@@ -1,0 +1,7 @@
+input_trees: null
+template: null
+prefix: "dta"
+beast:
+  threads: 4
+  samples: 10000
+  chain_length: 50000000

@@ -1,0 +1,12 @@
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python==3.11
+  - pip
+  - pip:
+    - pandas
+    - numpy
+    - Jinja2
+    - seaborn
