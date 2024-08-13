@@ -15,7 +15,7 @@ rule all:
 
 rule copy_input_files:
     input:
-        config["input_trees"]
+        config["trees"]
     output:
         f"{NAME}.input.trees"
     shell: "cp {input} {output}"

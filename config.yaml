@@ -1,6 +1,6 @@
-input_trees: null
-template: null
+trees: null
 prefix: "dta"
+template: null
 beast:
   threads: 4
   samples: 10000
