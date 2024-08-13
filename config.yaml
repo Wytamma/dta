@@ -1,6 +1,7 @@
 trees: null
 prefix: "dta"
 template: null
+mrsd: null
 beast:
   threads: 4
   samples: 10000

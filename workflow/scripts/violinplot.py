@@ -25,7 +25,11 @@ def main(log_file):
         print(columns[column])
         melted = pd.melt(df, id_vars=['state'], value_vars=columns[column])
         f, ax = plt.subplots()
-        sns.violinplot(x='value', y='variable', data=melted, ax=ax, hue='variable')
+        # order by mean value
+        mean_values = melted.groupby('variable')['value'].mean()
+        # Sort the variables by their mean values
+        sorted_variables = mean_values.sort_values(ascending=False).index
+        sns.violinplot(x='value', y='variable', data=melted, ax=ax, hue='variable', order=sorted_variables)
         ax.set_title(column)
         ax.set_ylabel(None)
         plt.tight_layout()

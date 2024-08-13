@@ -57,6 +57,45 @@ rule run_beast:
         beast -working -overwrite -beagle_GPU -threads {threads} {input.beast_XML_file} > {output.beast_stdout_file}
         """
 
+rule max_clade_credibility_tree:
+    """
+    Makes trace plots from the beast log file.
+    """
+    input:
+        rules.run_beast.output.beast_trees_file,
+    output:
+        f"{NAME}.mcc.mean.nex",
+    params:
+        burnin = int(int(config['beast']['samples']) * 0.1),
+    conda:
+        ENVS_DIR / "beast.yml"
+    shell:
+        """
+        treeannotator -burninTrees {params.burnin} -heights mean {input} {output}
+        """
+
+rule max_clade_credibility_tree_render:
+    """
+    Renders the MCC tree in SVG format.
+    """
+    input:
+        rules.max_clade_credibility_tree.output,
+    output:
+        f"{NAME}.mcc.mean.svg",
+        f"{NAME}.mcc.mean.location.prob.svg"
+    params:
+        mrsd = f'--mrsd {config["mrsd"]}' if config.get("mrsd") else "",
+        prefix = f"{NAME}.mcc.mean"
+    conda:
+        ENVS_DIR / "ggtree.yml"
+    shell: """
+        ${{CONDA_PREFIX}}/bin/Rscript \
+            {SCRIPTS_DIR}/plotMCC.R \
+            --input {input} \
+            --output-prefix {params.prefix} \
+            {params.mrsd}
+        """
+
 rule plot_results:
     input:
         beast_log_file = rules.run_beast.output.beast_log_file,
