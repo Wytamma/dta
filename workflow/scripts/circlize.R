@@ -95,7 +95,7 @@ grid.col <- c(
 )
 
 grid.col <- brewer.pal(n = 9, name = "Set1")
-names(grid.col) <- rownames(mean_migs)
+names(grid.col) <- sort(rownames(mean_migs))
 print(grid.col)
 # Generate the chord diagram
 chordDiagram(

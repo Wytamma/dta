@@ -55,7 +55,7 @@ output_extension <- opt$ext
 print(beast)
 # Define the color palette for the grid
 colours <- brewer.pal(n = 9, name = "Set1")
-names(colours) <- unique(beast[["location"]])
+names(colours) <- sort(unique(beast[["location"]]))
 print(colours)
 
 # Create the plot
