@@ -10,7 +10,7 @@ snk install wytamma/dta
 
 ```bash
 dta run \
-    --input-trees data/strict_0.5_0.1_1.trees \
+    --input-trees data/delphy.trees \
     --prefix results/dta \
     --beast-chain-length 10000 \
     --beast-samples 100

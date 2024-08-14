@@ -1,5 +1,4 @@
 .snakemake
 .env
 results
-data
 .DS_Store
