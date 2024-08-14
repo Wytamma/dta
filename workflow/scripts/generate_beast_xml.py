@@ -40,7 +40,7 @@ def compute_transition_matrices_and_rewards(location_codes):
         matrices[f"OutOf.{site}"] = df.to_numpy().flatten().astype(int).astype(str).tolist()
         df.loc[site, ~df.columns.isin([site])] = 0
 
-    matrices[f"Location.total"] = total_count.flatten().astype(int).astype(str).tolist()
+    matrices["total"] = total_count.flatten().astype(int).astype(str).tolist()
     
     for i in range(len(location_codes)):
         for j in range(len(location_codes)):

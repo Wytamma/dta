@@ -12,6 +12,7 @@ NAME = config["prefix"]
 rule all:
     input:
        f"{NAME}.log_Location.png",
+       f"{NAME}.circlize.svg",
 
 rule copy_input_files:
     input:
@@ -87,7 +88,7 @@ rule max_clade_credibility_tree_render:
         mrsd = f'--mrsd {config["mrsd"]}' if config.get("mrsd") else "",
         prefix = f"{NAME}.mcc.mean"
     conda:
-        ENVS_DIR / "ggtree.yml"
+        ENVS_DIR / "R.yml"
     shell: """
         ${{CONDA_PREFIX}}/bin/Rscript \
             {SCRIPTS_DIR}/plotMCC.R \
@@ -107,4 +108,16 @@ rule plot_results:
         python {SCRIPTS_DIR}/violinplot.py {input.beast_log_file}
         """
 
-
+rule plot_circlize:
+    input:
+        beast_log_file = rules.run_beast.output.beast_log_file,
+    output:
+        f"{NAME}.circlize.svg",
+    conda:
+        ENVS_DIR / "R.yml"
+    shell: """
+        ${{CONDA_PREFIX}}/bin/Rscript \
+            {SCRIPTS_DIR}/circlize.R \
+            --log {input.beast_log_file} \
+            --output {output}
+        """

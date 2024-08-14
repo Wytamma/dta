@@ -9,3 +9,4 @@ dependencies:
   - bioconductor-ggtree
   - r-optparse
   - r-svglite
+  - r-circlize

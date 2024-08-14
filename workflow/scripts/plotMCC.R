@@ -6,6 +6,7 @@ library(ggplot2)
 library(ggtree)
 library(treeio)
 library(optparse)
+library(RColorBrewer)
 
 # Set up the command line argument parser
 option_list <- list(
@@ -51,10 +52,15 @@ output_without_ext <- opt$`output-prefix`
 
 # Extract the file extension
 output_extension <- opt$ext
+print(beast)
+# Define the color palette for the grid
+colours <- brewer.pal(n = 9, name = "Set1")
+names(colours) <- unique(beast[["location"]])
+print(colours)
 
 # Create the plot
 p <- ggtree(beast, aes(color = location), size = 0.7, mrsd = opt$mrsd) +
-  # discrete color palette for the location viridis
+  scale_color_manual(values = colours) +
   theme_tree2() +
   theme(legend.position = c(.1, .8))
 
