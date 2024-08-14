@@ -13,6 +13,7 @@ rule all:
     input:
        f"{NAME}.log_Location.png",
        f"{NAME}.circlize.svg",
+       f"{NAME}.mcc.mean.svg",
 
 rule copy_input_files:
     input:
