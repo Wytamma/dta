@@ -71,12 +71,12 @@ def compute_transition_matrices_and_rewards(location_codes):
     return matrices, rewards
 
 
-def main(input_template, input_trees, output_xml, NAME, chain_length, sample_every, location_delimiter, location_index):
+def main(input_template, input_trees, output_xml, NAME, chain_length, sample_every, location_index):
     with open(input_template, "r") as template_file:
         template = Template(template_file.read())
         taxa = extract_taxa_from_nexus(input_trees)
         taxa_list = [
-            {"id": taxon.strip(), "location": taxon.split(location_delimiter)[int(location_index)]} for taxon in taxa
+            {"id": taxon.strip(), "location": taxon.split("|")[int(location_index)]} for taxon in taxa
         ]
         location_codes = list(set([taxon["location"] for taxon in taxa_list]))
         matrices, rewards = compute_transition_matrices_and_rewards(location_codes)
@@ -105,7 +105,6 @@ if __name__ == "__main__":
     parser.add_argument("--name", help="Name of the output files")
     parser.add_argument("--chain_length", help="Chain length")
     parser.add_argument("--sample_every", help="Sample every")
-    parser.add_argument("--location-delimiter", help="Location delimiter")
     parser.add_argument("--location-index", help="Location index")
     args = parser.parse_args()
 
@@ -116,6 +115,5 @@ if __name__ == "__main__":
         args.name,
         args.chain_length,
         args.sample_every,
-        args.location_delimiter,
         args.location_index,
     )

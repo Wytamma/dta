@@ -34,13 +34,13 @@ rule generate_beast_xml:
     params:
         chain_length=config["beast"].get("chain_length", 50000000),
         sample_every=int(config["beast"].get("chain_length", 50000000) / config["beast"].get("samples", 10000)),
-        name=Path(NAME).stem
+        name=Path(NAME).stem,
+        index=config["index"],
     shell: """
         python {SCRIPTS_DIR}/generate_beast_xml.py \
             --input_template {input.template} \
             --input_trees {input.input_trees} \
-            --location-delimiter {config['delimiter']} \
-            --location-index {config['index']} \
+            --location-index {params.index} \
             --output_xml {output.xml} \
             --chain_length {params.chain_length} \
             --sample_every {params.sample_every} \
@@ -75,7 +75,7 @@ rule max_clade_credibility_tree:
         ENVS_DIR / "beast.yml"
     shell:
         """
-        treeannotator -burninTrees {params.burnin} -heights mean {input} {output}
+        treeannotator -burninTrees {params.burnin} -heights keep {input} {output}
         """
 
 rule max_clade_credibility_tree_render:
