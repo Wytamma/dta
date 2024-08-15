@@ -4,9 +4,10 @@ import numpy as np
 import argparse
 from pathlib import Path
 
+
 def extract_taxa_from_nexus(nexus_file):
     taxa = []
-    with open(nexus_file, 'r') as file:
+    with open(nexus_file, "r") as file:
         in_taxlabels = False
         for line in file:
             line = line.strip()
@@ -22,32 +23,43 @@ def extract_taxa_from_nexus(nexus_file):
                 taxa.append(line.strip("'"))
     return taxa
 
+
 def compute_transition_matrices_and_rewards(location_codes):
     matrices = {}
     rewards = {}
 
-    df = pd.DataFrame(np.zeros(shape=(len(location_codes), len(location_codes))), index=location_codes, columns=location_codes)
+    df = pd.DataFrame(
+        np.zeros(shape=(len(location_codes), len(location_codes))),
+        index=location_codes,
+        columns=location_codes,
+    )
     total_count = np.ones(df.shape, dtype=int)
     np.fill_diagonal(total_count, 0)
     for site in location_codes:
         # Into matrix
         df.loc[~df.columns.isin([site]), site] = 1
-        matrices[f"Into.{site}"] = df.to_numpy().flatten().astype(int).astype(str).tolist()
+        matrices[f"Into.{site}"] = (
+            df.to_numpy().flatten().astype(int).astype(str).tolist()
+        )
         df.loc[~df.columns.isin([site]), site] = 0
 
         # OutOf matrix
         df.loc[site, ~df.columns.isin([site])] = 1
-        matrices[f"OutOf.{site}"] = df.to_numpy().flatten().astype(int).astype(str).tolist()
+        matrices[f"OutOf.{site}"] = (
+            df.to_numpy().flatten().astype(int).astype(str).tolist()
+        )
         df.loc[site, ~df.columns.isin([site])] = 0
 
     matrices["total"] = total_count.flatten().astype(int).astype(str).tolist()
-    
+
     for i in range(len(location_codes)):
         for j in range(len(location_codes)):
             if i == j:
                 continue
             df.iloc[i, j] = 1
-            matrices[f"Location.{location_codes[i]}.{location_codes[j]}"] = df.to_numpy().flatten().astype(int).astype(str).tolist()
+            matrices[f"Location.{location_codes[i]}.{location_codes[j]}"] = (
+                df.to_numpy().flatten().astype(int).astype(str).tolist()
+            )
             df.iloc[i, j] = 0
 
     # Compute rewards matrix
@@ -58,12 +70,15 @@ def compute_transition_matrices_and_rewards(location_codes):
 
     return matrices, rewards
 
-def main(input_template, input_trees, output_xml, NAME, chain_length, sample_every):
-    with open(input_template, 'r') as template_file:
+
+def main(input_template, input_trees, output_xml, NAME, chain_length, sample_every, location_delimiter, location_index):
+    with open(input_template, "r") as template_file:
         template = Template(template_file.read())
         taxa = extract_taxa_from_nexus(input_trees)
-        taxa_list = [{'id': taxon.strip(), 'location': taxon.split('|')[1]} for taxon in taxa]
-        location_codes = list(set([taxon['location'] for taxon in taxa_list]))
+        taxa_list = [
+            {"id": taxon.strip(), "location": taxon.split(location_delimiter)[int(location_index)]} for taxon in taxa
+        ]
+        location_codes = list(set([taxon["location"] for taxon in taxa_list]))
         matrices, rewards = compute_transition_matrices_and_rewards(location_codes)
 
         rendered_xml = template.render(
@@ -75,11 +90,12 @@ def main(input_template, input_trees, output_xml, NAME, chain_length, sample_eve
             matrices=matrices,
             rewards=rewards,
             chain_length=chain_length,
-            sample_every=sample_every
+            sample_every=sample_every,
         )
 
-        with open(output_xml, 'w') as f:
+        with open(output_xml, "w") as f:
             f.write(rendered_xml)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -89,6 +105,17 @@ if __name__ == "__main__":
     parser.add_argument("--name", help="Name of the output files")
     parser.add_argument("--chain_length", help="Chain length")
     parser.add_argument("--sample_every", help="Sample every")
+    parser.add_argument("--location-delimiter", help="Location delimiter")
+    parser.add_argument("--location-index", help="Location index")
     args = parser.parse_args()
 
-    main(args.input_template, args.input_trees, args.output_xml, args.name, args.chain_length, args.sample_every)
+    main(
+        args.input_template,
+        args.input_trees,
+        args.output_xml,
+        args.name,
+        args.chain_length,
+        args.sample_every,
+        args.location_delimiter,
+        args.location_index,
+    )

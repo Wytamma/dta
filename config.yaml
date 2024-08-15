@@ -1,7 +1,9 @@
 trees: null
+delimiter: "|"
+index: 1
 prefix: "dta"
-template: null
 mrsd: null
+template: null
 beast:
   threads: 4
   samples: 10000

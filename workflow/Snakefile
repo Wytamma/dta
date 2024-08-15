@@ -39,6 +39,8 @@ rule generate_beast_xml:
         python {SCRIPTS_DIR}/generate_beast_xml.py \
             --input_template {input.template} \
             --input_trees {input.input_trees} \
+            --location-delimiter {config['delimiter']} \
+            --location-index {config['index']} \
             --output_xml {output.xml} \
             --chain_length {params.chain_length} \
             --sample_every {params.sample_every} \
