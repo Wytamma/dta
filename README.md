@@ -15,3 +15,6 @@ dta run \
     --beast-chain-length 10000 \
     --beast-samples 100
 ```
+
+## Sampling bias
+https://academic.oup.com/ve/article/9/1/vead010/7028398#s6
