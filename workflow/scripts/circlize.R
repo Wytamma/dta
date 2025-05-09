@@ -77,7 +77,7 @@ create_migration_matrix <- function(df) {
 
 
 # Read the input file
-data <- read.csv(opt$log, sep = "\t", comment.char = "#", header = TRUE)
+data <- read.csv(opt$log, sep = "\t", comment.char = "#", header = TRUE, check.names=FALSE)
 # Create the migration matrix
 mean_migs <- create_migration_matrix(data)
 print(mean_migs)
@@ -94,8 +94,19 @@ grid.col <- c(
     Taveuni = "#e74c3c"
 )
 
-grid.col <- brewer.pal(n = 9, name = "Set1")
-names(grid.col) <- sort(rownames(mean_migs))
+# Get unique locations
+unique_locations <- sort(rownames(mean_migs))
+n_locations <- length(unique_locations)
+
+# Make sure you don’t exceed the maximum available in "Set1"
+if (n_locations > 9) {
+  warning("More than 9 unique locations. Switching to a larger palette.")
+  grid.col <- colorRampPalette(brewer.pal(12, "Set3"))(n_locations)
+} else {
+  grid.col <- brewer.pal(n = n_locations, name = "Set1")
+}
+# Assign names
+names(grid.col) <- unique_locations
 print(grid.col)
 # Generate the chord diagram
 chordDiagram(

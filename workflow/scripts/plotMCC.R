@@ -54,8 +54,20 @@ output_without_ext <- opt$`output-prefix`
 output_extension <- opt$ext
 print(beast)
 # Define the color palette for the grid
-colours <- brewer.pal(n = 9, name = "Set1")
-names(colours) <- sort(unique(beast[["location"]]))
+# Get unique locations
+unique_locations <- sort(unique(beast[["location"]]))
+n_locations <- length(unique_locations)
+
+# Make sure you don’t exceed the maximum available in "Set1"
+if (n_locations > 9) {
+  warning("More than 9 unique locations. Switching to a larger palette.")
+  colours <- colorRampPalette(brewer.pal(12, "Set3"))(n_locations)
+} else {
+  colours <- brewer.pal(n = n_locations, name = "Set1")
+}
+
+# Assign names
+names(colours) <- unique_locations
 print(colours)
 
 # Create the plot
