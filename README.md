@@ -54,12 +54,15 @@ dta run \
     --trait cfrD \
     --trait-model asymmetric \
     --log-complete-history \
+    --mrsd 2021-06-30 \
     --prefix results/cfrD
 ```
 
 That runs the simulated example shipped in `resources/`; swap in your own trees
-and sheet for a real analysis (`--mrsd` is only needed when the tip labels carry
-no dates, as here).  `data/traits.csv` is a table with one row per taxon:
+and sheet for a real analysis.  `--mrsd` is needed here only because the
+simulated tips are labelled `t1..t100`; when the labels carry dates the newest
+one is used and the flag can be left out.  `data/traits.csv` is a table with one
+row per taxon:
 
 ```csv
 taxon,cfrD
@@ -135,6 +138,7 @@ annotated subset appears in `dta run --help`.  The most useful:
 | `log_complete_history` | sample every transition and annotate every branch (default: on) |
 | `burnin_fraction` | fraction of each chain discarded as burn-in, default `0.1` |
 | `input_burnin_fraction` | fraction of the leading input trees dropped before BEAST samples them, default `0.1` |
+| `introduction_states` | state(s) whose entries are marked on the MCC figure, e.g. `"Bheri"`; empty draws the tree without markers |
 | `figure_ext` | `.svg` (needs cairo), `.png` or `.pdf` |
 | `beast_chain_length`, `beast_samples` | MCMC length and log frequency |
 | `beast_chains` | independent chains, combined with `logcombiner` |
@@ -161,6 +165,7 @@ annotated subset appears in `dta run --help`.  The most useful:
 | `<prefix>.event_counts.png`, `.event_dates.png`, `.root_states.png` | trait figures |
 | `<prefix>.trait_through_time.png` | prevalence over time + per-state emergence-date densities |
 | `<prefix>.trait_arrivals.png` | prevalence + when each state was entered (all sampled arrivals; stays informative when the carriers are paraphyletic) |
+| `<prefix>.mcc.mean.<trait>.introductions.png/.pdf/.csv` | MCC tree coloured by state, with the entries into `introduction_states` marked and dated |
 | `<prefix>.circlize<ext>` | chord diagram of mean transition counts |
 
 ## Notes and limitations

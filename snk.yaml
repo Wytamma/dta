@@ -28,6 +28,12 @@ cli:
   input_burnin_fraction:
     help: Fraction of the leading input trees dropped before BEAST samples them.
     type: float
+  introduction_states:
+    help: Comma separated states whose entries are marked on the MCC figure.
+    type: str
+  introduction_max_labels:
+    help: Maximum number of labels drawn on that figure; the CSV keeps every entry.
+    type: int
   figure_ext:
     choices:
     - .svg

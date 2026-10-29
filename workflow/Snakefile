@@ -70,6 +70,8 @@ SAMPLES = int(cfg("beast_samples", 10000))
 SAMPLE_EVERY = max(1, CHAIN_LENGTH // SAMPLES)
 N_CHAINS = int(cfg("beast_chains", 1))
 CHAIN_IDS = list(range(1, N_CHAINS + 1))
+#: most trees passed to treeannotator; the MCC is a posterior mean over trees
+MCC_MAX_TREES = int(cfg("mcc_max_trees", 1000))
 BEAST_SEED = cfg("beast_seed")
 
 if not TREES:
@@ -98,10 +100,20 @@ except (OSError, ValueError):
 
 if not MRSD:
     MRSD = INFERRED_MRSD
+    if MRSD:
+        print(f"mrsd: {MRSD} (read from the tip dates in {TREES})", file=sys.stderr)
 elif INFERRED_MRSD and parse_date(MRSD).isoformat() != INFERRED_MRSD:
     print(
-        f"warning: mrsd {MRSD} but the newest tip in {TREES} is dated "
-        f"{INFERRED_MRSD}; every calendar date will be shifted",
+        f"warning: mrsd is set to {MRSD} but the newest tip in {TREES} is dated "
+        f"{INFERRED_MRSD}; every calendar date will be shifted by that difference. "
+        "Drop --mrsd (or set 'mrsd: null' in the config) to use the tip dates.",
+        file=sys.stderr,
+    )
+if not MRSD:
+    print(
+        "note: no calendar origin: the tip labels carry no dates and no mrsd is set, "
+        "so the calendar-time artefacts (transition dates, prevalence, TMRCA) are "
+        "skipped.  Pass --mrsd YYYY-MM-DD to produce them.",
         file=sys.stderr,
     )
 
@@ -119,10 +131,16 @@ TRAIT_NAME = cfg("trait") or ("location" if TRAIT_SOURCE == "label" else Path(NA
 ID_PREFIX = cfg("trait_id_prefix") or TRAIT_NAME
 PAIR_PREFIX = cfg("trait_pair_prefix") or ID_PREFIX
 TRAIT_STATES = as_list(cfg("trait_states"))
+#: states whose *entries* are marked on the MCC figure (usually one, if any)
+INTRODUCTIONS = as_list(cfg("introduction_states"))
+INTRODUCTIONS_MAX_LABELS = int(cfg("introduction_max_labels", 15))
 
 FINAL_LOG = f"{NAME}.log"
 FINAL_TREES = f"{NAME}.trees"
 MCC = f"{NAME}.mcc.mean.nex"
+INTRODUCTIONS_PNG = f"{NAME}.mcc.mean.{ID_PREFIX}.introductions.png"
+INTRODUCTIONS_PDF = f"{NAME}.mcc.mean.{ID_PREFIX}.introductions.pdf"
+INTRODUCTIONS_CSV = f"{NAME}.mcc.mean.{ID_PREFIX}.introductions.csv"
 MCC_SVG = f"{NAME}.mcc.mean{FIGURE_EXT}"
 MCC_PROB_SVG = f"{NAME}.mcc.mean.{ID_PREFIX}.prob{FIGURE_EXT}"
 CHORD_SVG = f"{NAME}.circlize{FIGURE_EXT}"
@@ -233,6 +251,12 @@ rule all:
         ]
         # prevalence and TMRCA are calendar-time figures
         + ([PREVALENCE, TMRCA, THROUGH_TIME_PNG, ARRIVALS_PNG] if MRSD else [])
+        # the marked-entry figure is only meaningful with a target state
+        + (
+            [INTRODUCTIONS_PNG, INTRODUCTIONS_PDF, INTRODUCTIONS_CSV]
+            if MRSD and INTRODUCTIONS
+            else []
+        )
 
 
 rule copy_input_files:
@@ -362,10 +386,16 @@ rule collect_chains:
     params:
         logcombiner=cfg("beast_logcombiner", "logcombiner"),
         burnin=int(CHAIN_LENGTH * BURNIN_FRACTION),
+        # treeannotator is single-threaded and its cost grows with the number of
+        # trees: 9001 trees of 1220 tips take minutes and 880 MB.  Thinning the
+        # combined trees to MCC_MAX_TREES keeps the same posterior mean, cuts the
+        # file ~10x and the annotation time with it.  logcombiner resamples in
+        # *states*, so the frequency must be a multiple of the log interval.
+        resample=SAMPLE_EVERY * max(1, -(-(SAMPLES * N_CHAINS) // MCC_MAX_TREES)),
     shell:
         """
         {params.logcombiner} -burnin {params.burnin} {input.logs} {output.log} && \
-        {params.logcombiner} -trees -burnin {params.burnin} {input.trees} {output.trees}
+        {params.logcombiner} -trees -burnin {params.burnin} -resample {params.resample} {input.trees} {output.trees}
         """
 
 
@@ -413,6 +443,46 @@ rule max_clade_credibility_tree_render:
             --ext {params.ext} \
             {params.labels} \
             {params.mrsd}
+        """
+
+
+rule plot_introductions:
+    """MCC tree coloured by state, with the entries into a target state marked.
+
+    Derived from the analysis script used for the Australia introductions: a
+    node is an *entry* when it is inferred in one of ``introduction_states``
+    while its parent is inferred in another state.  Its date interval is the
+    HPD of that clade's MRCA over the posterior trees (treeannotator does not
+    write height intervals).
+    """
+    input:
+        mcc=MCC,
+        trees=FINAL_TREES,
+        traits=f"{NAME}.traits.tsv",
+        scripts=scripts("plotMCC_introductions.R"),
+    output:
+        png=INTRODUCTIONS_PNG,
+        pdf=INTRODUCTIONS_PDF,
+        table=INTRODUCTIONS_CSV,
+    conda:
+        ENVS_DIR / "R.yml"
+    params:
+        tag=ID_PREFIX,
+        states=",".join(INTRODUCTIONS) if INTRODUCTIONS else "",
+        mrsd=MRSD,
+        max_labels=INTRODUCTIONS_MAX_LABELS,
+        prefix=f"{NAME}.mcc.mean.{ID_PREFIX}.introductions",
+    shell:
+        """
+        Rscript {SCRIPTS_DIR}/plotMCC_introductions.R \
+            --tree {input.mcc} \
+            --traits {input.traits} \
+            --posterior {input.trees} \
+            --tag {params.tag} \
+            --states "{params.states}" \
+            --mrsd {params.mrsd} \
+            --max-labels {params.max_labels} \
+            --output-prefix {params.prefix}
         """
 
 

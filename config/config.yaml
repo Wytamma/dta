@@ -17,10 +17,12 @@
 input_trees: resources/simulated.trees
 # Every artefact is written as <prefix>.<something>.
 prefix: results/simulated
-# Most recent sampling date, YYYY-MM-DD.  Needed for calendar dates: transition
-# dates, prevalence over time and TMRCAs.  Read off the newest tip date in the
-# input tree labels when left null; set it to override (a mismatch is reported).
-mrsd: "2021-06-30"
+# Most recent sampling date, YYYY-MM-DD, for the calendar figures (transition
+# dates, prevalence over time, TMRCAs).  Leave null: it is read off the newest
+# tip date in the input tree labels, which is where the truth is.  Set it only
+# for trees whose labels carry no dates - the bundled simulated example, whose
+# tips are t1..t100 - or to override the inferred value deliberately.
+mrsd: null
 # Optional custom Jinja2 BEAST template.
 template: null
 
@@ -75,6 +77,13 @@ input_burnin_fraction: 0.1
 # possible.  Disabling it shrinks the tree log, but prevalence then falls back
 # to the reconstructed node states.
 log_complete_history: true
+# MCC figure: which state(s) count as an "introduction" — a node inferred in the
+# state whose parent is inferred in another one.  Empty by default: the tree is
+# drawn without markers, which is all that is meaningful for a trait that is
+# gained and lost hundreds of times.  Set e.g. introduction_states: "Bheri".
+introduction_states: null
+# Cap on the labels drawn on that figure; the CSV keeps every entry.
+introduction_max_labels: 15
 # Extension of the R-rendered figures.  ".svg" needs a cairo-capable R (the
 # conda environment provides one); ".png" also works on macOS with quartz.
 figure_ext: ".svg"
@@ -88,6 +97,10 @@ beast_flags: "-working -overwrite"
 beast_threads: 4
 beast_chain_length: 50000000
 beast_samples: 10000
+# Most trees handed to treeannotator when building the MCC tree.  The MCC is a
+# posterior mean over trees, so thinning to a few thousand changes nothing but
+# cuts the annotation time and the file size; 0 disables thinning.
+mcc_max_trees: 1000
 # Independent MCMC chains, combined with BEAST's logcombiner.
 beast_chains: 1
 # Fixed RNG seed, useful for reproducible runs and tests.

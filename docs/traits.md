@@ -314,6 +314,7 @@ Three intended differences from the historical behaviour:
 | `<prefix>.log_<trait>.png` | `violinplot.py` | posterior violins for rates, root frequencies and counts |
 | `<prefix>.trait_through_time.png` | `plot_events.py through_time` | prevalence over time plus one emergence-date density per state |
 | `<prefix>.trait_arrivals.png` | `plot_events.py arrivals` | prevalence over time plus, per state, every sampled transition into it |
+| `<prefix>.mcc.mean.<trait>.introductions.png` / `.pdf` / `.csv` | `plotMCC_introductions.R` | MCC tree coloured by state, with the entries into `introduction_states` marked and dated |
 
 ## 8. Prevalence over time and TMRCA (WP7)
 
@@ -379,6 +380,26 @@ informative however mixed the carriers are, because they come from the sampled
 histories rather than from the tip labels.  Use `through_time` when the state is
 a clade and its crown age is the quantity of interest, and `arrivals` when it is
 not; both figures are produced by default.
+
+**Entries into a state on the MCC tree.**  `<prefix>.mcc.mean.<trait>.introductions.png`
+(`plotMCC_introductions.R`, derived from the analysis script used for the
+Australia introductions) draws the maximum clade credibility tree with tips
+coloured by their sampled state and internal nodes filled by the inferred state
+— opacity from `location.prob` (nodes below `--min-prob`, 0.7, are faded) and
+size from the node posterior.  A node counts as an **entry** into a state when
+it is inferred in one of `introduction_states` while its parent is inferred in a
+different state; those nodes are marked and the earliest
+`introduction_max_labels` of them (15) are labelled with their tMRCA.  The
+companion CSV lists every entry with its node, posterior, inferred and parental
+state, tMRCA and 95% interval.
+
+The interval is computed here rather than read from the tree: BEAST 1.10's
+`treeannotator` annotates node heights but not their intervals, so the clade
+below each entry is located in every posterior tree (by tip label, since tip
+numbering differs) and the HPD of its MRCA height is taken.  Leave
+`introduction_states` empty for a trait that is gained and lost continuously:
+every node would then be an entry, which is true but not informative — the tree
+is still drawn, without markers.
 
 ## 9. Scope
 
