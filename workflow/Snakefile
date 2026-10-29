@@ -13,6 +13,7 @@ Every run therefore produces the same artefacts: ancestral states, directional
 transition counts, complete transition histories, transition dates, prevalence
 over time and TMRCAs.
 """
+import re
 import shlex
 import shutil
 import sys
@@ -63,6 +64,8 @@ LOG_COMPLETE_HISTORY = bool(cfg("log_complete_history", True))
 FIGURE_EXT = cfg("figure_ext", ".svg")
 
 BEAST_BIN = cfg("beast_bin", "beast")
+#: heap for the BEAST JVM, e.g. "8g"; null keeps the launcher's hard-coded 2 GB
+BEAST_HEAP = cfg("beast_heap")
 BEAST_FLAGS = cfg("beast_flags", "-working -overwrite")
 BEAST_THREADS = int(cfg("beast_threads", 1))
 CHAIN_LENGTH = int(cfg("beast_chain_length", 50000000))
@@ -116,6 +119,18 @@ if not MRSD:
         "skipped.  Pass --mrsd YYYY-MM-DD to produce them.",
         file=sys.stderr,
     )
+
+# EmpiricalTreeDistributionModel holds every tree of the input file in memory,
+# while the conda launcher caps the JVM at 2 GB, so say so before the run dies.
+if not BEAST_HEAP and Path(TREES).exists():
+    _trees_mb = Path(TREES).stat().st_size / 1024**2
+    if _trees_mb > 200:
+        print(
+            f"note: {TREES} is {_trees_mb:.0f} MB; BEAST loads every tree of it into "
+            "memory and its launcher caps the heap at 2 GB.  Set beast_heap "
+            "(e.g. --beast-heap 8g) if the run dies with OutOfMemoryError.",
+            file=sys.stderr,
+        )
 
 #: where the states come from: an annotation sheet or the taxon labels
 TRAIT_SOURCE = cfg("trait_source") or ("table" if cfg("trait_data") else "label")
@@ -221,6 +236,58 @@ def xml_options():
         ("--log-complete-history", LOG_COMPLETE_HISTORY),
     ]
     return options(pairs)
+
+
+def beast_command():
+    """Shell prefix that starts BEAST.
+
+    BEAST is started from the jar rather than through the conda ``beast``
+    launcher, for two reasons:
+
+    * the launcher passes a hard-coded ``-Xmx2048m``, and a later -Xmx beats
+      anything JAVA_TOOL_OPTIONS could add, so the heap could not be a parameter;
+    * the launcher puts the environment's ``lib`` first on ``java.library.path``,
+      where a native BEAGLE built for another architecture shadows a working
+      system one and BEAST then dies at the first likelihood with an
+      ``UnsatisfiedLinkError`` instead of falling back to its Java code.
+
+    Two layout details matter for portability.  The jars are *not* always at
+    ``<prefix>/lib``: the Linux conda package keeps them in ``share/beast/lib``
+    and links ``bin/beast`` to ``share/beast/bin/beast``, so the launcher is
+    resolved through its symlinks first.  And a system BEAGLE is only put in
+    front when it actually provides the JNI library, so a Linux install keeps
+    using the copy that matches its own environment.
+
+    The binary is resolved in the rule's shell, the only place the rule's conda
+    environment is on PATH.
+    """
+    heap = str(BEAST_HEAP or "2048m").strip()
+    if not re.fullmatch(r"[0-9]+[kKmMgG]?", heap):
+        raise ValueError(
+            f"beast_heap {BEAST_HEAP!r} is not a heap size; use e.g. 8g or 8192m"
+        )
+    return (
+        f'_beast_bin="$(command -v {BEAST_BIN})" || {{ '
+        f'echo "beast_bin {BEAST_BIN} is not on PATH" >&2; exit 1; }}; '
+        '_beast_real="$(realpath "$_beast_bin" 2>/dev/null || '
+        'readlink -f "$_beast_bin" 2>/dev/null || echo "$_beast_bin")"; '
+        'if [ -n "$_beast_real" ]; then _beast_bin="$_beast_real"; fi; '
+        '_beast_lib="$(dirname "$(dirname "$_beast_bin")")/lib"; '
+        '_beagle_sys=""; '
+        'for _d in /usr/local/lib; do '
+        'if [ -f "$_d/libhmsbeagle-jni.jnilib" ] || [ -f "$_d/libhmsbeagle-jni.so" ]; then '
+        '_beagle_sys="$_d:"; fi; done; '
+        '_beast_run() { if [ -f "$_beast_lib/beast.jar" ]; then '
+        # every jar the install ships: the names differ between packages
+        '_beast_cp="$(printf \'%s:\' "$_beast_lib"/*.jar)"; _beast_cp="${_beast_cp%:}"; '
+        '_beast_path="${_beagle_sys}$_beast_lib"; '
+        'if [ -n "${LD_LIBRARY_PATH:-}" ]; then '
+        '_beast_path="$_beast_path:$LD_LIBRARY_PATH"; fi; '
+        f'java -Xms64m -Xmx{heap} -Djava.library.path="$_beast_path" '
+        '-cp "$_beast_cp" dr.app.beast.BeastMain "$@"; '
+        'else "$_beast_bin" "$@"; fi; }; '
+        "_beast_run"
+    )
 
 
 def beast_seed(wildcards):
@@ -356,7 +423,8 @@ rule run_beast:
     conda:
         ENVS_DIR / "beast.yml"
     params:
-        beast=BEAST_BIN,
+        # a lambda so a bad heap setting only fails the job that needs it
+        beast=lambda wildcards: beast_command(),
         flags=BEAST_FLAGS,
         seed=beast_seed,
     shell:

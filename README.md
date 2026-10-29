@@ -143,6 +143,7 @@ annotated subset appears in `dta run --help`.  The most useful:
 | `beast_chain_length`, `beast_samples` | MCMC length and log frequency |
 | `beast_chains` | independent chains, combined with `logcombiner` |
 | `beast_bin`, `beast_flags` | BEAST executable and flags (add `-beagle_GPU` to use a GPU) |
+| `beast_heap` | heap for the BEAST JVM, e.g. `8g`; raise it if a run dies with `OutOfMemoryError` while reading the input trees |
 
 ## Outputs
 

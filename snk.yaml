@@ -10,6 +10,9 @@ cli:
   beast_chains:
     help: Number of independent chains, combined with logcombiner.
     type: int
+  beast_heap:
+    help: Heap for the BEAST JVM, e.g. 8g; the launcher's 2 GB is used when unset.
+    type: str
   beast_flags:
     help: Flags passed to BEAST, e.g. '-working -overwrite -beagle_GPU'.
     type: str

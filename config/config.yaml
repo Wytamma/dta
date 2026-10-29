@@ -89,8 +89,17 @@ introduction_max_labels: 15
 figure_ext: ".svg"
 
 # ---- BEAST ----------------------------------------------------------------
-# BEAST executable on PATH (the conda environment provides it).
+# BEAST executable on PATH (the conda environment provides it).  It is used to
+# locate the jars: the rule starts BEAST from lib/beast.jar rather than through
+# this launcher, because the launcher hard-codes the heap; a binary that is not
+# in that layout is run as-is.
 beast_bin: beast
+# Heap for the BEAST JVM, e.g. "8g" or "8192m".  Null keeps the launcher's
+# hard-coded 2 GB, which the JVM cannot be talked out of from outside (a later
+# -Xmx wins), so setting this starts the jar directly with the same classpath.
+# Raise it when a run dies with OutOfMemoryError while reading the input trees:
+# the empirical tree distribution holds every tree of that file in memory.
+beast_heap: null
 # Add "-beagle_GPU" (or "-beagle_SSE") to accelerate with BEAGLE; the default
 # works on any machine.
 beast_flags: "-working -overwrite"
