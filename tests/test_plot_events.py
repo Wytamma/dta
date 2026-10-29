@@ -5,8 +5,10 @@ import pytest
 from plot_events import (
     first_acquisition,
     plot_arrivals,
+    plot_through_time,
     states_by_acquisition,
     states_by_mrca,
+    support_cutoff,
 )
 
 
@@ -85,3 +87,59 @@ def test_arrivals_renders_and_needs_dates(tmp_path):
 
     with pytest.raises(ValueError, match="--mrsd"):
         plot_arrivals(prevalence, events.drop(columns=["date"]), table, output)
+
+
+# --------------------------------------------------------------------------
+# low-support stretch towards the present
+# --------------------------------------------------------------------------
+def test_support_cutoff_is_the_last_date_with_enough_lineages():
+    prevalence = pd.DataFrame(
+        {
+            "date": [1.0, 2.0, 3.0],
+            "state": ["A"] * 3,
+            "proportion_mean": [10.0, 20.0, 30.0],
+            "proportion_lo95": [5.0, 10.0, 20.0],
+            "proportion_hi95": [15.0, 30.0, 40.0],
+            "n_lineages_mean": [10.0, 4.0, 1.0],
+        }
+    )
+    assert support_cutoff(prevalence, 5.0) == 1.0
+    assert support_cutoff(prevalence, 1.0) == 3.0
+    assert support_cutoff(prevalence.drop(columns=["n_lineages_mean"]), 5.0) is None
+
+
+def test_plots_ignore_the_low_support_stretch(tmp_path):
+    prevalence = pd.DataFrame(
+        {
+            "date": [1.0, 2.0, 3.0],
+            "state": ["A"] * 3,
+            "proportion_mean": [10.0, 20.0, 100.0],
+            "proportion_lo95": [5.0, 10.0, 100.0],
+            "proportion_hi95": [15.0, 30.0, 100.0],
+            "n_lineages_mean": [10.0, 10.0, 1.0],
+        }
+    )
+    events = pd.DataFrame({"dest": ["A", "A"], "date": [1.4, 1.9]})
+    table = acquisitions([["A", 1.0, 1.5, 1.2, 1.8]])
+    for kind in ("through_time", "arrivals"):
+        output = tmp_path / f"{kind}.png"
+        if kind == "through_time":
+            summary = pd.DataFrame(
+                {
+                    "state": ["A"],
+                    "date_median": ["2019-01-01"],
+                    "appears_in": [1.0],
+                    "at_root": [0.0],
+                    "tree_tmrca": [2.0],
+                }
+            )
+            plot_through_time(
+                prevalence,
+                table.rename(columns={"first_median": "date"}).assign(height=0.0),
+                summary,
+                output,
+                min_lineages=5.0,
+            )
+        else:
+            plot_arrivals(prevalence, events, table, output, min_lineages=5.0)
+        assert output.exists() and output.stat().st_size > 0

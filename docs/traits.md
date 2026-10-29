@@ -334,11 +334,20 @@ destination of the younger of two transitions between them, and in the source of
 its oldest transition above that; with no transition it keeps the state of its
 child node.  Without the annotation the tool falls back to node states and warns.
 
-Two caveats matter for real data:
+Three caveats matter for real data:
 
 * the number of lineages alive deep in the tree is small (2 at the root), so
   prevalence near the root is coarse and dominated by uncertainty about the root
   state;
+* the curve runs from the root to the *present*, not to the earliest sampling
+  date: the lineages crossing a time are those of the tips sampled after it, so
+  the pool thins out towards the present and a share there can rest on a single
+  lineage, which reads as 0% or 100%.  Where fewer than `--min-lineages`
+  (default 5) cross, both the prevalence and the arrival figures stop drawing
+  and shade the stretch instead — that is also what keeps the prevalence panel
+  and the arrival histograms on one common window.  The rows stay in
+  `prevalence.tsv`; the figures just decline to plot a proportion nobody should
+  read;
 * this is a *lineage* proportion, not a population prevalence.
 
 **Emergence date.**  `<prefix>.tmrca.tsv` reports, per state, the age of the most

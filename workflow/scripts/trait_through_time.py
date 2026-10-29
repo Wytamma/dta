@@ -146,18 +146,17 @@ def main(argv=None) -> int:
     heights = [node_heights(root) for _, root, _ in samples]
     root_heights = [heights[i][id(root)] for i, (_, root, _) in enumerate(samples)]
     tallest = max(root_heights)
-    # Below the oldest sampled tip the lineage pool shrinks towards the last few
-    # genomes, which reflects the sampling schedule rather than the trait, so the
-    # curve stops at the earliest sampling date.  The small epsilon keeps the grid
-    # strictly inside the tree when all tips are sampled at the same time (tips
-    # sit at height 0 in exact arithmetic but at ~1e-11 in the written tree).
-    oldest_tip = max(
-        heights[i][id(tip)]
-        for i, (_, root, _) in enumerate(samples)
-        for tip in iter_nodes(root)
-        if tip.is_tip
-    )
-    bottom = max(oldest_tip, tallest * 1e-6)
+    # The curve runs from the root all the way to the present (height 0).  The
+    # lineages crossing a height are those sampled after it, so the pool thins
+    # out towards the present - which is exactly where the sampling window is and
+    # where the transitions are logged.  Stopping at the earliest sampling date
+    # instead would leave the sampling window out of the figure and place the
+    # arrival dates of the traces outside the plot of the prevalence they belong
+    # to.  The 95% ribbon widens there, which is the honest reading.  The small
+    # epsilon keeps the grid strictly inside the tree when every tip is sampled
+    # at the same time (tips sit at height 0 in exact arithmetic but at ~1e-11
+    # in the written tree).
+    bottom = tallest * 1e-6
     top = max(tallest * (1.0 - 1e-6), bottom)
     grid = np.linspace(top, bottom, args.n_grid)
     dates = mrsd_year - grid
@@ -213,7 +212,7 @@ def main(argv=None) -> int:
 
     with open(f"{prefix}.prevalence.tsv", "w") as handle:
         handle.write("date\tstate\tproportion_mean\tproportion_lo95\tproportion_hi95\tn_lineages_mean\tn_samples\n")
-        for point in range(args.n_grid):
+        for point in range(len(dates)):
             for state_index, state in enumerate(states):
                 handle.write(
                     f"{dates[point]:.6f}\t{label(state)}\t{mean[state_index, point]:.6f}\t"
@@ -259,7 +258,7 @@ def main(argv=None) -> int:
             )
 
     print(
-        f"{len(samples)} trees, {len(states)} states, {args.n_grid} time points "
+        f"{len(samples)} trees, {len(states)} states, {len(dates)} time points "
         f"({dates[-1]:.3f} to {dates[0]:.3f}), tree TMRCA {tallest:.3f}"
     )
     for state in states:

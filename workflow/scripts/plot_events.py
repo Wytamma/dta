@@ -89,6 +89,43 @@ def states_by_mrca(summary: pd.DataFrame) -> list[str]:
     return sorted(order, key=key)
 
 
+def support_cutoff(prevalence: pd.DataFrame, min_lineages: float):
+    """Last date at which at least ``min_lineages`` lineages cross.
+
+    Towards the present only the branches of the most recently sampled tips
+    cross a time, so a share computed there can rest on a single lineage and
+    read as 0% or 100%.  The figures stop drawing the curves past this date and
+    shade the stretch instead: the table keeps those rows (they are real data),
+    but they are not proportions anyone should read.
+    """
+    if "n_lineages_mean" not in prevalence.columns or prevalence.empty:
+        return None
+    per_date = prevalence.groupby("date")["n_lineages_mean"].max().sort_index()
+    supported = per_date[per_date >= min_lineages]
+    return float(supported.index.max()) if not supported.empty else None
+
+
+def shade_low_support(axis, prevalence: pd.DataFrame, cutoff, min_lineages: float) -> None:
+    """Grey out the stretch past ``cutoff`` where too few lineages cross."""
+    if cutoff is None or prevalence.empty:
+        return
+    high = float(prevalence["date"].max())
+    if high <= cutoff:
+        return
+    axis.axvspan(cutoff, high, color=MUTED, alpha=0.12, linewidth=0, zorder=0)
+    axis.text(
+        (cutoff + high) / 2,
+        0.5,
+        f"<{min_lineages:g} lineages",
+        rotation=90,
+        ha="center",
+        va="center",
+        fontsize=7,
+        color=MUTED,
+        transform=axis.get_xaxis_transform(),
+    )
+
+
 def first_acquisition(acquisitions: pd.DataFrame | None, state: str):
     """``(median date, P(acquired), lo95, hi95)`` for ``state``.
 
@@ -133,6 +170,7 @@ def plot_through_time(
     title: str | None = None,
     states: list[str] | None = None,
     acquisitions: pd.DataFrame | None = None,
+    min_lineages: float = 5.0,
 ) -> None:
     """Prevalence over time plus one emergence-date density per state.
 
@@ -157,8 +195,11 @@ def plot_through_time(
     colours = {state: PALETTE[i % len(PALETTE)] for i, state in enumerate(state_list)}
 
     axis = figure.add_subplot(gridspec[0])
+    cutoff = support_cutoff(prevalence, min_lineages)
     for state in state_list:
         block = prevalence[prevalence["state"] == state].sort_values("date")
+        if cutoff is not None:
+            block = block[block["date"] <= cutoff]
         if block.empty:
             continue
         colour = colours[state]
@@ -176,6 +217,7 @@ def plot_through_time(
         if earliest is None:
             continue
         axis.axvline(earliest, color=colours[state], lw=1.0, ls=":", alpha=0.8)
+    shade_low_support(axis, prevalence, cutoff, min_lineages)
     axis.set_ylim(0, 100)
     axis.set_ylabel("% of lineages")
     axis.set_title(title or "Trait prevalence over time")
@@ -284,6 +326,7 @@ def plot_arrivals(
     title: str | None = None,
     states: list[str] | None = None,
     summary: pd.DataFrame | None = None,
+    min_lineages: float = 5.0,
 ) -> None:
     """Prevalence plus, per state, *when it was entered*.
 
@@ -351,8 +394,11 @@ def plot_arrivals(
     colours = {state: PALETTE[i % len(PALETTE)] for i, state in enumerate(state_list)}
 
     axis = figure.add_subplot(gridspec[0])
+    cutoff = support_cutoff(prevalence, min_lineages)
     for state in state_list:
         block = prevalence[prevalence["state"] == state].sort_values("date")
+        if cutoff is not None:
+            block = block[block["date"] <= cutoff]
         if block.empty:
             continue
         axis.plot(block["date"], 100 * block["proportion_mean"], color=colours[state], lw=2, label=state)
@@ -368,6 +414,7 @@ def plot_arrivals(
         median, _, _, _ = first_acquisition(acquisitions, state)
         if median is not None:
             axis.axvline(median, color=colours[state], lw=1.0, ls=":", alpha=0.8)
+    shade_low_support(axis, prevalence, cutoff, min_lineages)
     axis.set_ylim(0, 100)
     axis.set_ylabel("% of lineages")
     axis.set_title(title or "Trait prevalence over time")
@@ -580,6 +627,12 @@ def build_parser() -> argparse.ArgumentParser:
     through.add_argument("--output", required=True)
     through.add_argument("--title")
     through.add_argument("--states", help="comma separated subset of states to plot")
+    through.add_argument(
+        "--min-lineages",
+        type=float,
+        default=5.0,
+        help="stop the prevalence curves where fewer lineages cross (default: 5)",
+    )
 
     arrivals = subparsers.add_parser(
         "arrivals",
@@ -595,6 +648,12 @@ def build_parser() -> argparse.ArgumentParser:
     arrivals.add_argument("--output", required=True)
     arrivals.add_argument("--title")
     arrivals.add_argument("--states", help="comma separated subset of states to plot")
+    arrivals.add_argument(
+        "--min-lineages",
+        type=float,
+        default=5.0,
+        help="stop the prevalence curves where fewer lineages cross (default: 5)",
+    )
     return parser
 
 
@@ -620,6 +679,7 @@ def main(argv=None) -> int:
             args.title,
             states,
             read_table(args.tmrca) if args.tmrca else None,
+            min_lineages=args.min_lineages,
         )
     else:
         plot_through_time(
@@ -630,6 +690,7 @@ def main(argv=None) -> int:
             args.title,
             states,
             read_table(args.acquisitions) if args.acquisitions else None,
+            min_lineages=args.min_lineages,
         )
     print(f"wrote {args.output}")
     return 0
