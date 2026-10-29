@@ -1,0 +1,122 @@
+additional_snakemake_args: []
+art: null
+cli:
+  beast_bin:
+    help: BEAST executable.
+    type: str
+  beast_chain_length:
+    help: MCMC chain length.
+    type: int
+  beast_chains:
+    help: Number of independent chains, combined with logcombiner.
+    type: int
+  beast_flags:
+    help: Flags passed to BEAST, e.g. '-working -overwrite -beagle_GPU'.
+    type: str
+  beast_samples:
+    help: Number of posterior samples to log.
+    type: int
+  beast_seed:
+    help: Fixed RNG seed.
+    type: int
+  beast_threads:
+    help: Threads per BEAST run.
+    type: int
+  burnin_fraction:
+    help: Fraction of each chain discarded as burn-in.
+    type: float
+  input_burnin_fraction:
+    help: Fraction of the leading input trees dropped before BEAST samples them.
+    type: float
+  figure_ext:
+    choices:
+    - .svg
+    - .png
+    - .pdf
+    help: Extension of the R-rendered figures (.svg needs a cairo-capable R).
+    type: str
+  log_complete_history:
+    help: Sample every transition; needed for transition dates and prevalence.
+    type: bool
+  mrsd:
+    help: Most recent sampling date, YYYY-MM-DD; read off dated tip labels when omitted.
+    type: str
+  prefix:
+    help: 'Output prefix: every artefact is written as <prefix>.<something>.'
+    type: path
+  template:
+    help: Custom Jinja2 BEAST template.
+    type: path
+  trait_data:
+    help: Annotation sheet (taxon,state) used by --trait-source table.
+    type: path
+  trait_label_delimiter:
+    help: Delimiter of the taxon labels, e.g. '|'.
+    type: str
+  trait_label_index:
+    help: 'For --trait-source label: which label field holds the state.'
+    type: int
+  trait_match_mode:
+    choices:
+    - exact
+    - field
+    - regex
+    help: How a tree label is matched to a row of the annotation sheet.
+    type: str
+  trait_model:
+    choices:
+    - equal
+    - asymmetric
+    - bssvs
+    help: 'Transition model: equal (symmetric), asymmetric, or bssvs.'
+    type: str
+  trait:
+    help: Trait name; becomes the BEAST id prefix and the tree annotation tag.
+    type: str
+  trait_on_missing:
+    choices:
+    - unknown
+    - error
+    help: 'Taxa without an observation: code them as unknown (?) or fail.'
+    type: str
+  trait_root_state:
+    help: 'Root state prior: uniform, empirical or fixed:<state>.'
+    type: str
+  trait_source:
+    choices:
+    - label
+    - table
+    help: 'Where the states come from: a field of each taxon label, or a sheet.'
+    type: str
+  trait_state_code_style:
+    choices:
+    - safe
+    - as-is
+    help: safe rewrites numeric state codes (0 -> s0) for BEAST's logger.
+    type: str
+  trait_state_column:
+    help: Name of the state column in the annotation sheet.
+    type: str
+  trait_states:
+    help: Comma separated state order, e.g. '0,1'; default sorts the states.
+    type: str
+  trait_taxon_column:
+    help: Name of the taxon column in the annotation sheet.
+    type: str
+  trait_taxon_regex:
+    help: Regex used by --trait-match-mode regex.
+    type: str
+  input_trees:
+    help: NEXUS file of dated trees (branch lengths in years before --mrsd).
+    short: i
+    type: path
+conda: true
+font: small
+logo: DTA
+min_snk_cli_version: null
+resources: []
+skip_missing: true
+snakefile: null
+symlink_resources: false
+tagline: Discrete trait analysis on dated phylogenies
+version: v0.1.0

@@ -1,3 +1,4 @@
+name: dta-python
 channels:
   - conda-forge
   - bioconda
@@ -6,7 +7,8 @@ dependencies:
   - python==3.11
   - pip
   - pip:
-    - pandas
-    - numpy
-    - Jinja2
-    - seaborn
+      - pandas
+      - numpy
+      - Jinja2
+      - matplotlib
+      - pytest

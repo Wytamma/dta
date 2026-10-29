@@ -1,43 +1,88 @@
-# seaborn violinplot
+#!/usr/bin/env python3
+"""Violin plots of the posterior distributions in a BEAST log.
 
-def main(log_file):
-    import pandas as pd
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-    from collections import defaultdict
+Groups the log columns into families and writes one figure per family next to
+the log file:
 
-    df = pd.read_csv(log_file, sep='\t', comment='#')
+``<log>_<name>.rates.png``    transition rate parameters
+``<log>_<name>.root.png``     root state frequencies
+``<log>_In.Out.png``          transitions into and out of each state
+``<log>_<pair>.png``          ordered pair transition counts
 
-    # melt the dataframe c_Location
-    columns = defaultdict(list)
+``--name`` is the BEAST id prefix (``location`` for the legacy geographic
+analysis, the trait name otherwise) and ``--pair-prefix`` is the prefix of the
+ordered pair registers (``Location`` for the legacy analysis).
+"""
+from __future__ import annotations
 
-    for column in df.columns:
-        if column.startswith('location.root'):
-            columns["location.root"].append(column)
-        elif column.startswith('location.rates'):
-            columns["location.rates"].append(column)
-        elif column.startswith('c_Into') or column.startswith('c_OutOf'):
-            columns["In.Out"].append(column)
-        elif column.startswith('c_Location') and not column.startswith('c_Location.total'):
-            columns["Location"].append(column)
+import argparse
+from collections import defaultdict
 
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt  # noqa: E402
+import pandas as pd  # noqa: E402
+
+
+def _orientation() -> dict:
+    """matplotlib renamed ``vert`` to ``orientation`` in 3.10."""
+    parts = matplotlib.__version__.split(".")
+    try:
+        major, minor = int(parts[0]), int(parts[1])
+    except (IndexError, ValueError):
+        return {"orientation": "horizontal"}
+    if (major, minor) >= (3, 10):
+        return {"orientation": "horizontal"}
+    return {"vert": False}
+
+
+def group_columns(columns, name: str, pair_prefix: str) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = defaultdict(list)
     for column in columns:
-        print(columns[column])
-        melted = pd.melt(df, id_vars=['state'], value_vars=columns[column])
-        f, ax = plt.subplots()
-        # order by mean value
-        mean_values = melted.groupby('variable')['value'].mean()
-        # Sort the variables by their mean values
-        sorted_variables = mean_values.sort_values(ascending=False).index
-        sns.violinplot(x='value', y='variable', data=melted, ax=ax, hue='variable', order=sorted_variables)
-        ax.set_title(column)
-        ax.set_ylabel(None)
-        plt.tight_layout()
-        plt.savefig(f'{log_file}_{column}.png')
+        if column.startswith(f"{name}.root"):
+            groups[f"{name}.root"].append(column)
+        elif column.startswith(f"{name}.rates"):
+            groups[f"{name}.rates"].append(column)
+        elif column.startswith("c_Into") or column.startswith("c_OutOf"):
+            groups["In.Out"].append(column)
+        elif column.startswith(f"c_{pair_prefix}.") and not column.startswith(
+            f"c_{pair_prefix}.total"
+        ):
+            groups[pair_prefix].append(column)
+    return groups
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('log_file')
-    args = parser.parse_args()
-    main(args.log_file)
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("log_file")
+    parser.add_argument("--name", default="location", help="BEAST id prefix in the log")
+    parser.add_argument(
+        "--pair-prefix", default="Location", help="prefix of the ordered pair registers"
+    )
+    args = parser.parse_args(argv)
+
+    frame = pd.read_csv(args.log_file, sep="\t", comment="#")
+    groups = group_columns(list(frame.columns), args.name, args.pair_prefix)
+
+    for group, columns in groups.items():
+        melted = frame.melt(id_vars=["state"], value_vars=columns, var_name="parameter")
+        figure, axis = plt.subplots(figsize=(6.5, max(2.0, 0.35 * len(columns) + 1.2)))
+        order = melted.groupby("parameter")["value"].mean().sort_values(ascending=False).index
+        data = [melted.loc[melted["parameter"] == parameter, "value"] for parameter in order]
+        axis.violinplot(data, showextrema=False, **_orientation())
+        axis.set_yticks(range(1, len(order) + 1))
+        axis.set_yticklabels(order, fontsize=7)
+        axis.set_xlabel("posterior value")
+        axis.set_title(group)
+        axis.spines[["top", "right"]].set_visible(False)
+        figure.tight_layout()
+        figure.savefig(f"{args.log_file}_{group}.png", dpi=150)
+        plt.close(figure)
+        print(f"{args.log_file}_{group}.png")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

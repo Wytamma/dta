@@ -1,22 +1,47 @@
 <?xml version="1.0" standalone="yes"?>
+{#-
+  BEAST 1.10 discrete trait analysis template.
+
+  Rendered by workflow/scripts/generate_beast_xml.py.  Everything is
+  parameterised by `name` so the same template drives the legacy geographic
+  analysis (`name = "location"`) and arbitrary genomic traits (`name = "cfrD"`).
+
+  Context
+  -------
+  name                 BEAST id prefix / attribute name / tree annotation tag
+  taxa                 [{id, state}]  state is a state code or "?" for missing
+  states               ordered state codes (defines the CTMC ordering)
+  state_count          len(states)
+  matrices             {register name: flat 0/1 matrix as list of strings}
+  rewards              {register name: one-hot vector as list of strings}
+  model                {estimate_rates, use_indicators, rate_prior_shape,
+                        rate_prior_scale, bssvs_mean}
+  root_prior           {type, estimated, state, values}
+  clock_rate_init      initial trait transition rate
+  clock_prior_shape    shape of the gamma prior on the exponential mean
+  clock_prior_scale    scale of that gamma prior
+  log_complete_history enable the completeHistoryLogger
+  tree_file, log_filename, tree_log_filename, jump_history_filename
+  chain_length, sample_every
+-#}
 <beast>
     <taxa id="taxa">
         {% for taxon in taxa -%}
         <taxon id="{{ taxon.id }}">
-            <attr name="location">{{ taxon.location }}</attr>
+            <attr name="{{ name }}">{{ taxon.state }}</attr>
         </taxon>
         {% endfor %}
     </taxa>
 
-    <generalDataType id="location.dataType">
-        {% for code in location_codes -%}
+    <generalDataType id="{{ name }}.dataType">
+        {% for code in states -%}
         <state code="{{ code }}"/>
         {% endfor -%}
     </generalDataType>
 
-    <attributePatterns id="location.pattern" attribute="location">
+    <attributePatterns id="{{ name }}.pattern" attribute="{{ name }}">
         <taxa idref="taxa"/>
-        <generalDataType idref="location.dataType"/>
+        <generalDataType idref="{{ name }}.dataType"/>
     </attributePatterns>
 
     <empiricalTreeDistributionModel id="treeModel" fileName="{{ tree_file }}">
@@ -26,59 +51,63 @@
         <empiricalTreeDistributionModel idref="treeModel"/>
     </statistic>
 
-    <strictClockBranchRates id="location.branchRates">
+    <strictClockBranchRates id="{{ name }}.branchRates">
         <rate>
-            <parameter id="location.clock.rate" value="0.01" lower="0.0"/>
+            <parameter id="{{ name }}.clock.rate" value="{{ clock_rate_init }}" lower="0.0"/>
         </rate>
     </strictClockBranchRates>
 
-    <generalSubstitutionModel id="location.model">
-        <generalDataType idref="location.dataType"/>
+    <generalSubstitutionModel id="{{ name }}.model">
+        <generalDataType idref="{{ name }}.dataType"/>
         <frequencies>
-            <frequencyModel id="location.frequencyModel" normalize="true">
-                <generalDataType idref="location.dataType"/>
+            <frequencyModel id="{{ name }}.frequencyModel" normalize="true">
+                <generalDataType idref="{{ name }}.dataType"/>
                 <frequencies>
-                    <parameter id="location.frequencies" dimension="{{ location_codes | length }}"/>
+                    <parameter id="{{ name }}.frequencies" dimension="{{ state_count }}"/>
                 </frequencies>
             </frequencyModel>
         </frequencies>
         <rates>
-            <parameter id="location.rates" dimension="{{ location_codes | length * (location_codes | length - 1) }}" value="1.0"/>
+            <parameter id="{{ name }}.rates" dimension="{{ rate_count }}" value="{{ rate_values }}"/>
         </rates>
+        {% if model.use_indicators -%}
         <rateIndicator>
-            <parameter id="location.indicators" dimension="{{ location_codes | length * (location_codes | length - 1) }}" value="1.0"/>
+            <parameter id="{{ name }}.indicators" dimension="{{ rate_count }}" value="{{ rate_values }}"/>
         </rateIndicator>
+        {% endif -%}
     </generalSubstitutionModel>
-    <sumStatistic id="location.nonZeroRates" elementwise="true">
-        <parameter idref="location.indicators"/>
+    {% if model.use_indicators %}
+    <sumStatistic id="{{ name }}.nonZeroRates" elementwise="true">
+        <parameter idref="{{ name }}.indicators"/>
     </sumStatistic>
-    <siteModel id="location.siteModel">
+    {% endif %}
+    <siteModel id="{{ name }}.siteModel">
         <substitutionModel>
-            <generalSubstitutionModel idref="location.model"/>
+            <generalSubstitutionModel idref="{{ name }}.model"/>
         </substitutionModel>
     </siteModel>
 
-    <frequencyModel id="location.root.frequencyModel" normalize="true">
-        <generalDataType idref="location.dataType"/>
+    <frequencyModel id="{{ name }}.root.frequencyModel" normalize="true">
+        <generalDataType idref="{{ name }}.dataType"/>
         <frequencies>
-            <parameter id="location.root.frequencies" dimension="{{ location_codes | length }}"/>
+            <parameter id="{{ name }}.root.frequencies" dimension="{{ state_count }}" value="{{ root_prior.vector }}"/>
         </frequencies>
     </frequencyModel>
 
-    <markovJumpsTreeLikelihood id="location.treeLikelihood" stateTagName="location.states">
-        <attributePatterns idref="location.pattern"/>
+    <markovJumpsTreeLikelihood id="{{ name }}.treeLikelihood" stateTagName="{{ name }}.states"{% if log_complete_history %} useUniformization="true" numberOfSimulants="1" saveCompleteHistory="true" logCompleteHistory="true"{% endif %}>
+        <attributePatterns idref="{{ name }}.pattern"/>
         <treeModel idref="treeModel"/>
-        <siteModel idref="location.siteModel"/>
-        <generalSubstitutionModel idref="location.model"/>
-        <strictClockBranchRates idref="location.branchRates"/>
-        <frequencyModel idref="location.root.frequencyModel"/>
+        <siteModel idref="{{ name }}.siteModel"/>
+        <generalSubstitutionModel idref="{{ name }}.model"/>
+        <strictClockBranchRates idref="{{ name }}.branchRates"/>
+        <frequencyModel idref="{{ name }}.root.frequencyModel"/>
 
-        {% for name, matrix in matrices.items() -%}
-        <parameter id="{{ name }}" value="{{ ' '.join(matrix) }}"/>
-        {% endfor %}
+        {% for register, matrix in matrices.items() -%}
+        <parameter id="{{ register }}" value="{{ matrix }}"/>
+        {% endfor -%}
         <rewards>
-        {% for site, reward_matrix in rewards.items() -%}
-                <parameter id="rewards_{{ site }}" value="{{ ' '.join(reward_matrix) }}"/>
+        {% for register, reward_matrix in rewards.items() -%}
+            <parameter id="{{ register }}" value="{{ reward_matrix }}"/>
         {% endfor -%}
         </rewards>
     </markovJumpsTreeLikelihood>
@@ -88,30 +117,36 @@
             <distribution>
                 <exponentialDistributionModel>
                     <mean>
-                        <parameter id="location.clock.rate.exp.mean" value="1"/>
+                        <parameter id="{{ name }}.clock.rate.exp.mean" value="1"/>
                     </mean>
                 </exponentialDistributionModel>
             </distribution>
             <data>
-                <parameter idref="location.clock.rate"/>
+                <parameter idref="{{ name }}.clock.rate"/>
             </data>
         </distributionLikelihood>
-        <gammaPrior shape="0.5" scale="2" offset="0.0">
-            <parameter idref="location.clock.rate.exp.mean"/>
+        <gammaPrior shape="{{ clock_prior_shape }}" scale="{{ clock_prior_scale }}" offset="0.0">
+            <parameter idref="{{ name }}.clock.rate.exp.mean"/>
         </gammaPrior>
-        <poissonPrior mean="3" offset="0">
-            <statistic idref="location.nonZeroRates"/>
+        {% if model.use_indicators %}
+        <poissonPrior mean="{{ model.bssvs_mean }}" offset="0">
+            <statistic idref="{{ name }}.nonZeroRates"/>
         </poissonPrior>
+        {% endif %}
+        {% if root_prior.estimated %}
         <uniformPrior lower="0.0" upper="1.0">
-            <parameter idref="location.root.frequencies"/>
+            <parameter idref="{{ name }}.root.frequencies"/>
         </uniformPrior>
+        {% endif %}
+        {% if model.estimate_rates %}
         <cachedPrior>
-            <gammaPrior shape="1.0" scale="1.0" offset="0.0">
-                <parameter idref="location.rates"/>
+            <gammaPrior shape="{{ model.rate_prior_shape }}" scale="{{ model.rate_prior_scale }}" offset="0.0">
+                <parameter idref="{{ name }}.rates"/>
             </gammaPrior>
-            <parameter idref="location.rates"/>
+            <parameter idref="{{ name }}.rates"/>
         </cachedPrior>
-        <generalSubstitutionModel idref="location.model"/>
+        {% endif %}
+        <generalSubstitutionModel idref="{{ name }}.model"/>
     </prior>
 
     <operators id="operators" optimizationSchedule="log">
@@ -119,66 +154,88 @@
             <empiricalTreeDistributionModel idref="treeModel"/>
         </empiricalTreeDistributionOperator>
         <scaleOperator scaleFactor="0.75" weight="8">
-            <parameter idref="location.clock.rate"/>
+            <parameter idref="{{ name }}.clock.rate"/>
         </scaleOperator>
         <scaleOperator scaleFactor="0.75" weight="4">
-            <parameter idref="location.clock.rate.exp.mean"/>
+            <parameter idref="{{ name }}.clock.rate.exp.mean"/>
         </scaleOperator>
+        {% if model.estimate_rates %}
         <scaleOperator scaleFactor="0.75" weight="10" scaleAllIndependently="true">
-            <parameter idref="location.rates"/>
+            <parameter idref="{{ name }}.rates"/>
         </scaleOperator>
+        {% endif %}
+        {% if model.use_indicators %}
         <bitFlipOperator weight="30">
-            <parameter idref="location.indicators"/>
+            <parameter idref="{{ name }}.indicators"/>
         </bitFlipOperator>
+        {% endif %}
+        {% if root_prior.estimated %}
         <deltaExchange delta="0.01" weight="1">
-            <parameter idref="location.root.frequencies"/>
+            <parameter idref="{{ name }}.root.frequencies"/>
         </deltaExchange>
+        {% endif %}
     </operators>
 
     <mcmc id="mcmc" chainLength="{{ chain_length }}" autoOptimize="true">
         <posterior id="posterior">
             <prior idref="prior"/>
             <likelihood id="likelihood">
-                <markovJumpsTreeLikelihood idref="location.treeLikelihood"/>
+                <markovJumpsTreeLikelihood idref="{{ name }}.treeLikelihood"/>
             </likelihood>
         </posterior>
         <operators idref="operators"/>
 
-		<log id="screenLog" logEvery="10000">
-			<posterior idref="posterior"/>
-			<prior idref="prior"/>
-			<likelihood idref="likelihood"/>
-			<parameter idref="location.clock.rate"/>
-			<sumStatistic idref="location.nonZeroRates"/>
-		</log>
+        <log id="screenLog" logEvery="10000">
+            <posterior idref="posterior"/>
+            <prior idref="prior"/>
+            <likelihood idref="likelihood"/>
+            <parameter idref="{{ name }}.clock.rate"/>
+            {% if model.use_indicators -%}
+            <sumStatistic idref="{{ name }}.nonZeroRates"/>
+            {% endif -%}
+        </log>
 
-		<log id="fileLog" logEvery="{{ sample_every }}" fileName="{{ log_filename }}" overwrite="false">
-			<posterior idref="posterior"/>
-			<prior idref="prior"/>
-			<likelihood idref="likelihood"/>
-			<parameter idref="location.root.frequencies"/>
-			<parameter idref="location.clock.rate.exp.mean"/>
-			<parameter idref="location.clock.rate"/>
-			<parameter idref="location.rates"/>
-			<parameter idref="location.indicators"/>
-			<sumStatistic idref="location.nonZeroRates"/>
-			<statistic idref="treeModel.currentTree"/>
-			<markovJumpsTreeLikelihood idref="location.treeLikelihood"/>
-		</log>
+        <log id="fileLog" logEvery="{{ sample_every }}" fileName="{{ log_filename }}" overwrite="false">
+            <posterior idref="posterior"/>
+            <prior idref="prior"/>
+            <likelihood idref="likelihood"/>
+            <parameter idref="{{ name }}.root.frequencies"/>
+            <parameter idref="{{ name }}.clock.rate.exp.mean"/>
+            <parameter idref="{{ name }}.clock.rate"/>
+            <parameter idref="{{ name }}.rates"/>
+            {% if model.use_indicators -%}
+            <parameter idref="{{ name }}.indicators"/>
+            <sumStatistic idref="{{ name }}.nonZeroRates"/>
+            {% endif -%}
+            <statistic idref="treeModel.currentTree"/>
+            <markovJumpsTreeLikelihood idref="{{ name }}.treeLikelihood"/>
+        </log>
 
-		<logTree id="treeFileLog" logEvery="{{ sample_every }}" nexusFormat="true" fileName="{{ tree_log_filename }}" sortTranslationTable="true">
-			<treeModel idref="treeModel"/>
-			<posterior idref="posterior"/>
-			<trait name="location.states" tag="location">
-				<ancestralTreeLikelihood idref="location.treeLikelihood"/>
-			</trait>
-		</logTree>
-	</mcmc>
+        {% if log_complete_history %}
+        <log id="completeJumpHistory" logEvery="{{ sample_every }}" fileName="{{ jump_history_filename }}" overwrite="false">
+            <completeHistoryLogger internal="true" external="true">
+                <markovJumpsTreeLikelihood idref="{{ name }}.treeLikelihood"/>
+            </completeHistoryLogger>
+        </log>
+        {% endif %}
+        <logTree id="treeFileLog" logEvery="{{ sample_every }}" nexusFormat="true" fileName="{{ tree_log_filename }}" sortTranslationTable="true">
+            <treeModel idref="treeModel"/>
+            <posterior idref="posterior"/>
+            <trait name="{{ name }}.states" tag="{{ name }}">
+                <ancestralTreeLikelihood idref="{{ name }}.treeLikelihood"/>
+            </trait>
+            {% if log_complete_history %}
+            <trait name="history" tag="{{ history_tag }}">
+                <ancestralTreeLikelihood idref="{{ name }}.treeLikelihood"/>
+            </trait>
+            {% endif %}
+        </logTree>
+    </mcmc>
 
 
-	<report>
-		<property name="timer">
-			<mcmc idref="mcmc"/>
-		</property>
-	</report>
+    <report>
+        <property name="timer">
+            <mcmc idref="mcmc"/>
+        </property>
+    </report>
 </beast>

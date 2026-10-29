@@ -1,0 +1,11 @@
+[workspace]
+authors = ["Wytamma Wirth <wytamma.wirth@me.com>"]
+channels = ["conda-forge", "bioconda"]
+name = "dta"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+conda = ">=26.9.4,<27"

@@ -1,4 +1,4 @@
-name: ggtree
+name: dta-R
 channels:
   - conda-forge
   - bioconda
@@ -7,6 +7,6 @@ dependencies:
   - r-base
   - bioconductor-treeio
   - bioconductor-ggtree
-  - r-optparse
-  - r-svglite
   - r-circlize
+  - r-svglite
+  - r-rcolorbrewer

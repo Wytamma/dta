@@ -1,126 +1,628 @@
+"""DTA: discrete trait analysis on dated phylogenies.
+
+There is one analysis.  A trait is any categorical genome feature and the only
+thing that differs between runs is where its states come from:
+
+``label``
+    from the taxon labels (the geographic analyses; the trait is called
+    ``location`` by default), or
+``table``
+    from an external annotation sheet.
+
+Every run therefore produces the same artefacts: ancestral states, directional
+transition counts, complete transition histories, transition dates, prevalence
+over time and TMRCAs.
+"""
+import shlex
+import shutil
+import sys
+
 # Load configuration
-configfile: "config.yaml"
+configfile: "config/config.yaml"
+
+# Every rule declares a conda environment; without conda on PATH Snakemake
+# silently ignores them and 'python' resolves to an interpreter that usually
+# lacks the pipeline's dependencies, which fails with no useful message.
+if shutil.which("conda") is None:
+    print(
+        "warning: conda is not on PATH, so the rule environments are ignored and "
+        "the rules run with whatever 'python' resolves to (for example "
+        "generate_beast_xml fails on a missing Jinja2).  Activate conda or add it "
+        "to PATH.",
+        file=sys.stderr,
+    )
 
 SNAKE_DIR = Path(workflow.basedir)
 ENVS_DIR = SNAKE_DIR / "envs"
 SCRIPTS_DIR = SNAKE_DIR / "scripts"
 TEMPLATES_DIR = SNAKE_DIR / "templates"
 
-NAME = config["prefix"]
+def cfg(key, default=None):
+    """Config lookup; a null value means "not set"."""
+    value = config.get(key)
+    return default if value is None else value
 
-# Rule to define the final output
+
+def as_list(value):
+    """Accept "0,1", ["0", "1"] or null for the state order."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [str(item) for item in value]
+
+
+NAME = cfg("prefix", "dta")
+TREES = cfg("input_trees")
+MRSD = cfg("mrsd")
+TEMPLATE = cfg("template")
+BURNIN_FRACTION = float(cfg("burnin_fraction", 0.1))
+#: burn-in of the *input* tree posterior, dropped before BEAST samples from it
+INPUT_BURNIN_FRACTION = float(cfg("input_burnin_fraction", 0.1))
+LOG_COMPLETE_HISTORY = bool(cfg("log_complete_history", True))
+FIGURE_EXT = cfg("figure_ext", ".svg")
+
+BEAST_BIN = cfg("beast_bin", "beast")
+BEAST_FLAGS = cfg("beast_flags", "-working -overwrite")
+BEAST_THREADS = int(cfg("beast_threads", 1))
+CHAIN_LENGTH = int(cfg("beast_chain_length", 50000000))
+SAMPLES = int(cfg("beast_samples", 10000))
+SAMPLE_EVERY = max(1, CHAIN_LENGTH // SAMPLES)
+N_CHAINS = int(cfg("beast_chains", 1))
+CHAIN_IDS = list(range(1, N_CHAINS + 1))
+BEAST_SEED = cfg("beast_seed")
+
+if not TREES:
+    raise ValueError(
+        "config key 'input_trees' must point at a NEXUS file of dated trees "
+        "(pass --input-trees, or edit config/config.yaml)"
+    )
+# The tree log is written to <prefix>.trees; refuse to clobber the input trees.
+if Path(TREES).resolve() == Path(f"{NAME}.trees").resolve():
+    raise ValueError(
+        f"the tree output '{NAME}.trees' would overwrite the input trees file; "
+        "use a different 'prefix'"
+    )
+
+#: the MRSD is a property of the input: a dated tree has date + height == mrsd
+#: at every tip, so it is read off the labels unless the run pins one.  Pass
+#: --mrsd to place the calendar axis elsewhere; a mismatch is reported.
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+from dates import infer_mrsd, parse_date  # noqa: E402
+
+try:
+    INFERRED_MRSD = infer_mrsd(TREES)
+except (OSError, ValueError):
+    INFERRED_MRSD = None
+
+if not MRSD:
+    MRSD = INFERRED_MRSD
+elif INFERRED_MRSD and parse_date(MRSD).isoformat() != INFERRED_MRSD:
+    print(
+        f"warning: mrsd {MRSD} but the newest tip in {TREES} is dated "
+        f"{INFERRED_MRSD}; every calendar date will be shifted",
+        file=sys.stderr,
+    )
+
+#: where the states come from: an annotation sheet or the taxon labels
+TRAIT_SOURCE = cfg("trait_source") or ("table" if cfg("trait_data") else "label")
+if TRAIT_SOURCE not in ("label", "table"):
+    raise ValueError(f"config 'trait_source' must be 'label' or 'table', got {TRAIT_SOURCE!r}")
+TRAIT_DATA = cfg("trait_data")
+if TRAIT_SOURCE == "table" and not TRAIT_DATA:
+    raise ValueError("config 'trait_data' must point at an annotation sheet")
+
+#: the trait name is the BEAST id prefix; a label-sourced trait defaults to
+#: "location", which reproduces the historical identifiers
+TRAIT_NAME = cfg("trait") or ("location" if TRAIT_SOURCE == "label" else Path(NAME).stem)
+ID_PREFIX = cfg("trait_id_prefix") or TRAIT_NAME
+PAIR_PREFIX = cfg("trait_pair_prefix") or ID_PREFIX
+TRAIT_STATES = as_list(cfg("trait_states"))
+
+FINAL_LOG = f"{NAME}.log"
+FINAL_TREES = f"{NAME}.trees"
+MCC = f"{NAME}.mcc.mean.nex"
+MCC_SVG = f"{NAME}.mcc.mean{FIGURE_EXT}"
+MCC_PROB_SVG = f"{NAME}.mcc.mean.{ID_PREFIX}.prob{FIGURE_EXT}"
+CHORD_SVG = f"{NAME}.circlize{FIGURE_EXT}"
+
+CHAIN_LOGS = [f"{NAME}.chain{i}.log" for i in CHAIN_IDS]
+CHAIN_TREES = [f"{NAME}.chain{i}.trees" for i in CHAIN_IDS]
+CHAIN_JUMP_HISTORIES = [f"{NAME}.chain{i}.jumpHistory.log" for i in CHAIN_IDS]
+
+EVENTS = f"{NAME}.events.tsv"
+EVENT_COUNTS = f"{NAME}.event_counts.tsv"
+EVENT_DATES = f"{NAME}.event_dates.tsv"
+ACQUISITIONS = f"{NAME}.acquisitions.tsv"
+ROOT_STATES = f"{NAME}.root_states.tsv"
+SUMMARY = f"{NAME}.summary.json"
+ESS = f"{NAME}.ess.tsv"
+PREVALENCE = f"{NAME}.prevalence.tsv"
+TMRCA = f"{NAME}.tmrca.tsv"
+TMRCA_SAMPLES = f"{NAME}.tmrca_samples.tsv"
+THROUGH_TIME_PNG = f"{NAME}.trait_through_time.png"
+ARRIVALS_PNG = f"{NAME}.trait_arrivals.png"
+
+
+def scripts(*names):
+    """Declare the scripts a rule runs so that editing one triggers a rerun."""
+    return [SCRIPTS_DIR / name for name in names]
+
+
+def quote(value):
+    return shlex.quote(str(value))
+
+
+def options(pairs):
+    """Render ``[(flag, value), (flag, True), (flag, None)]`` as shell flags."""
+    parts = []
+    for flag, value in pairs:
+        if value is None or value is False or value == "":
+            continue
+        parts.append(quote(flag))
+        if value is not True:
+            parts.append(quote(value))
+    return " ".join(parts)
+
+
+def preprocess_options():
+    pairs = [
+        ("--source", TRAIT_SOURCE),
+        ("--trait", TRAIT_NAME),
+        ("--label-delimiter", cfg("trait_label_delimiter", "|")),
+        ("--label-index", cfg("trait_label_index", 0)),
+        ("--taxon-regex", cfg("trait_taxon_regex")),
+        ("--states", ",".join(TRAIT_STATES) if TRAIT_STATES else None),
+        ("--on-missing", cfg("trait_on_missing", "unknown")),
+    ]
+    if TRAIT_SOURCE == "table":
+        pairs += [
+            ("--taxon-column", cfg("trait_taxon_column")),
+            ("--state-column", cfg("trait_state_column")),
+            ("--match-mode", cfg("trait_match_mode", "exact")),
+        ]
+    return options(pairs)
+
+
+def xml_options():
+    pairs = [
+        ("--id-prefix", ID_PREFIX),
+        ("--pair-prefix", PAIR_PREFIX),
+        ("--traits", f"{NAME}.traits.tsv"),
+        ("--state-order", ",".join(TRAIT_STATES) if TRAIT_STATES else None),
+        ("--trait-model", cfg("trait_model", "asymmetric")),
+        ("--root-state", cfg("trait_root_state", "uniform")),
+        ("--state-code-style", cfg("trait_state_code_style", "safe")),
+        ("--clock-rate", cfg("trait_clock_rate")),
+        ("--clock-prior-shape", cfg("trait_clock_prior_shape")),
+        ("--clock-prior-scale", cfg("trait_clock_prior_scale")),
+        ("--rate-prior-shape", cfg("trait_rate_prior_shape")),
+        ("--rate-prior-scale", cfg("trait_rate_prior_scale")),
+        ("--bssvs-prior-mean", cfg("trait_bssvs_prior_mean")),
+        ("--log-complete-history", LOG_COMPLETE_HISTORY),
+    ]
+    return options(pairs)
+
+
+def beast_seed(wildcards):
+    if BEAST_SEED is None:
+        return ""
+    return f"-seed {int(BEAST_SEED) + int(wildcards.chain)}"
+
+
 rule all:
     input:
-       f"{NAME}.log_Location.png",
-       f"{NAME}.circlize.svg",
-       f"{NAME}.mcc.mean.svg",
+        [
+            MCC_SVG,
+            MCC_PROB_SVG,
+            f"{FINAL_LOG}_{PAIR_PREFIX}.png",
+            CHORD_SVG,
+            ESS,
+        ]
+        + [
+            EVENTS,
+            EVENT_COUNTS,
+            EVENT_DATES,
+            ACQUISITIONS,
+            ROOT_STATES,
+            SUMMARY,
+            f"{NAME}.event_counts.png",
+            f"{NAME}.event_dates.png",
+            f"{NAME}.root_states.png",
+        ]
+        # prevalence and TMRCA are calendar-time figures
+        + ([PREVALENCE, TMRCA, THROUGH_TIME_PNG, ARRIVALS_PNG] if MRSD else [])
+
 
 rule copy_input_files:
-    input:
-        config["trees"]
-    output:
-        f"{NAME}.input.trees"
-    shell: "cp {input} {output}"
+    """Copy the input trees, dropping the unconverged start of the posterior.
 
-# Step 2: Generate BEAST XML using the extracted taxa and Jinja2 template
-rule generate_beast_xml:
+    BEAST samples uniformly from every tree in the file, so leaving the input
+    burn-in in place would give pre-convergence trees the same weight as the
+    converged ones (``input_burnin_fraction``).
+    """
     input:
-        template=config.get("template") if config.get("template") else TEMPLATES_DIR / "beast_template.xml.j2",
-        input_trees=rules.copy_input_files.output,
+        trees=TREES,
+        scripts=scripts("filter_trees.py"),
     output:
-        xml=f"{NAME}.xml"
+        f"{NAME}.input.trees",
     conda:
         ENVS_DIR / "python.yml"
     params:
-        chain_length=config["beast"].get("chain_length", 50000000),
-        sample_every=int(config["beast"].get("chain_length", 50000000) / config["beast"].get("samples", 10000)),
-        name=Path(NAME).stem,
-        index=config["index"],
-    shell: """
+        burnin_fraction=INPUT_BURNIN_FRACTION,
+    shell:
+        """
+        python {SCRIPTS_DIR}/filter_trees.py \
+            --trees {input.trees} \
+            --output {output} \
+            --burnin-fraction {params.burnin_fraction}
+        """
+
+
+rule preprocess_traits:
+    """Normalise the trait: from an annotation sheet or from the taxon labels."""
+    input:
+        trees=f"{NAME}.input.trees",
+        data=TRAIT_DATA if TRAIT_SOURCE == "table" else [],
+        scripts=scripts("trait_data.py"),
+    output:
+        tsv=f"{NAME}.traits.tsv",
+        json=f"{NAME}.traits.json",
+        state_labels=f"{NAME}.state_labels.tsv",
+    conda:
+        ENVS_DIR / "python.yml"
+    params:
+        opts=preprocess_options(),
+        data_flag=f"--trait-data {TRAIT_DATA}" if TRAIT_SOURCE == "table" else "",
+    shell:
+        """
+        python {SCRIPTS_DIR}/trait_data.py \
+            --input-trees {input.trees} \
+            --output-prefix {NAME} \
+            {params.data_flag} \
+            {params.opts}
+        """
+
+
+rule generate_beast_xml:
+    input:
+        template=TEMPLATE if TEMPLATE else TEMPLATES_DIR / "beast_template.xml.j2",
+        input_trees=rules.copy_input_files.output,
+        traits=f"{NAME}.traits.tsv",
+        scripts=scripts("generate_beast_xml.py", "trait_data.py"),
+    output:
+        xml=f"{NAME}.chain{{chain}}.xml",
+    wildcard_constraints:
+        chain="[0-9]+",
+    conda:
+        ENVS_DIR / "python.yml"
+    params:
+        opts=xml_options(),
+        # BEAST writes its logs next to the XML, so the name must be the bare
+        # file stem even when the output prefix contains directories.
+        name=lambda wildcards: f"{Path(NAME).stem}.chain{wildcards.chain}",
+        chain_length=CHAIN_LENGTH,
+        sample_every=SAMPLE_EVERY,
+    shell:
+        """
         python {SCRIPTS_DIR}/generate_beast_xml.py \
             --input_template {input.template} \
             --input_trees {input.input_trees} \
-            --location-index {params.index} \
             --output_xml {output.xml} \
+            --name {params.name} \
             --chain_length {params.chain_length} \
             --sample_every {params.sample_every} \
-            --name {params.name}
+            {params.opts}
         """
+
 
 rule run_beast:
     input:
-        beast_XML_file = rules.generate_beast_xml.output.xml,
+        xml=f"{NAME}.chain{{chain}}.xml",
     output:
-        beast_stdout_file = f"{NAME}.stdout",
-        beast_log_file = f"{NAME}.log",
-        beast_trees_file =  f"{NAME}.trees",
-    threads: config["beast"].get("threads", 1)
+        stdout=f"{NAME}.chain{{chain}}.stdout",
+        log=f"{NAME}.chain{{chain}}.log",
+        trees=f"{NAME}.chain{{chain}}.trees",
+        jump_history=[f"{NAME}.chain{{chain}}.jumpHistory.log"] if LOG_COMPLETE_HISTORY else [],
+    wildcard_constraints:
+        chain="[0-9]+",
+    threads:
+        BEAST_THREADS
     conda:
         ENVS_DIR / "beast.yml"
-    shell: """
-        beast -working -overwrite -beagle_GPU -threads {threads} {input.beast_XML_file} > {output.beast_stdout_file}
+    params:
+        beast=BEAST_BIN,
+        flags=BEAST_FLAGS,
+        seed=beast_seed,
+    shell:
+        """
+        {params.beast} {params.flags} -threads {threads} {params.seed} {input.xml} > {output.stdout}
         """
 
-rule max_clade_credibility_tree:
-    """
-    Makes trace plots from the beast log file.
+
+rule collect_chains:
+    """Combine the chains, dropping burn-in from each of them.
+
+    ``logcombiner`` drops the first ``-burnin`` states of *every* input file and
+    then concatenates the remainders; it does not interleave the chains.  Doing
+    the burn-in here means the combined log and tree files carry none, so their
+    consumers (treeannotator, the violin plots and the chord diagram) apply
+    none either.  Consumers that read the per-chain files keep using
+    ``burnin_fraction`` on each file.
     """
     input:
-        rules.run_beast.output.beast_trees_file,
+        logs=CHAIN_LOGS,
+        trees=CHAIN_TREES,
     output:
-        f"{NAME}.mcc.mean.nex",
+        log=FINAL_LOG,
+        trees=FINAL_TREES,
+    conda:
+        ENVS_DIR / "beast.yml"
     params:
-        burnin = int(int(config['beast']['samples']) * 0.1),
+        logcombiner=cfg("beast_logcombiner", "logcombiner"),
+        burnin=int(CHAIN_LENGTH * BURNIN_FRACTION),
+    shell:
+        """
+        {params.logcombiner} -burnin {params.burnin} {input.logs} {output.log} && \
+        {params.logcombiner} -trees -burnin {params.burnin} {input.trees} {output.trees}
+        """
+
+
+rule max_clade_credibility_tree:
+    """Maximum clade credibility tree (treeannotator)."""
+    input:
+        FINAL_TREES,
+    output:
+        MCC,
+    params:
+        # collect_chains already dropped the burn-in of every chain
+        burnin=0,
+        treeannotator=cfg("beast_treeannotator", "treeannotator"),
     conda:
         ENVS_DIR / "beast.yml"
     shell:
         """
-        treeannotator -burninTrees {params.burnin} -heights keep {input} {output}
+        {params.treeannotator} -burninTrees {params.burnin} -heights keep {input} {output}
         """
 
+
 rule max_clade_credibility_tree_render:
-    """
-    Renders the MCC tree in SVG format.
-    """
+    """Render the MCC tree with reconstructed states (ggtree)."""
     input:
-        rules.max_clade_credibility_tree.output,
+        mcc=MCC,
+        labels=f"{NAME}.state_labels.tsv",
+        scripts=scripts("plotMCC.R"),
     output:
-        f"{NAME}.mcc.mean.svg",
-        f"{NAME}.mcc.mean.location.prob.svg"
+        MCC_SVG,
+        MCC_PROB_SVG,
     params:
-        mrsd = f'--mrsd {config["mrsd"]}' if config.get("mrsd") else "",
-        prefix = f"{NAME}.mcc.mean"
+        mrsd=f"--mrsd {MRSD}" if MRSD else "",
+        prefix=f"{NAME}.mcc.mean",
+        tag=ID_PREFIX,
+        ext=FIGURE_EXT,
+        labels=f"--labels {NAME}.state_labels.tsv",
     conda:
         ENVS_DIR / "R.yml"
-    shell: """
-        ${{CONDA_PREFIX}}/bin/Rscript \
-            {SCRIPTS_DIR}/plotMCC.R \
-            --input {input} \
+    shell:
+        """
+        Rscript {SCRIPTS_DIR}/plotMCC.R \
+            --input {input.mcc} \
             --output-prefix {params.prefix} \
+            --trait-tag {params.tag} \
+            --ext {params.ext} \
+            {params.labels} \
             {params.mrsd}
         """
 
+
 rule plot_results:
+    """Violin plots of the posterior distributions in the BEAST log."""
     input:
-        beast_log_file = rules.run_beast.output.beast_log_file,
+        beast_log_file=FINAL_LOG,
+        scripts=scripts("violinplot.py"),
     output:
-        f"{NAME}.log_Location.png",
+        f"{FINAL_LOG}_{PAIR_PREFIX}.png",
     conda:
         ENVS_DIR / "python.yml"
-    shell: """
-        python {SCRIPTS_DIR}/violinplot.py {input.beast_log_file}
+    shell:
+        """
+        python {SCRIPTS_DIR}/violinplot.py {input.beast_log_file} \
+            --name {ID_PREFIX} --pair-prefix {PAIR_PREFIX}
         """
 
+
 rule plot_circlize:
+    """Chord diagram of the mean transition counts between states."""
     input:
-        beast_log_file = rules.run_beast.output.beast_log_file,
+        beast_log_file=FINAL_LOG,
+        scripts=scripts("circlize.R"),
     output:
-        f"{NAME}.circlize.svg",
+        CHORD_SVG,
     conda:
         ENVS_DIR / "R.yml"
-    shell: """
-        ${{CONDA_PREFIX}}/bin/Rscript \
-            {SCRIPTS_DIR}/circlize.R \
+    params:
+        ext=FIGURE_EXT,
+    shell:
+        """
+        Rscript {SCRIPTS_DIR}/circlize.R \
             --log {input.beast_log_file} \
-            --output {output}
+            --output {output} \
+            --ext {params.ext} \
+            --pair-prefix {PAIR_PREFIX}
+        """
+
+
+rule check_convergence:
+    """Effective sample sizes for every numeric column of the log."""
+    input:
+        logs=CHAIN_LOGS,
+        scripts=scripts("diagnostics.py"),
+    output:
+        ESS,
+    conda:
+        ENVS_DIR / "python.yml"
+    params:
+        burnin_fraction=BURNIN_FRACTION,
+    shell:
+        """
+        python {SCRIPTS_DIR}/diagnostics.py {input.logs} \
+            --output {output} \
+            --burnin-fraction {params.burnin_fraction}
+        """
+
+
+
+rule summarize_events:
+    """Transition counts, root states and transition dates."""
+    input:
+        jump_histories=CHAIN_JUMP_HISTORIES,
+        # per-chain files: every chain must lose its own burn-in prefix
+        trees=CHAIN_TREES,
+        log=CHAIN_LOGS,
+        traits_json=f"{NAME}.traits.json",
+        scripts=scripts("summarize_jumps.py", "jump_history.py", "dates.py"),
+    output:
+        events=EVENTS,
+        counts=EVENT_COUNTS,
+        dates=EVENT_DATES,
+        acquisitions=ACQUISITIONS,
+        root_states=ROOT_STATES,
+        summary=SUMMARY,
+    conda:
+        ENVS_DIR / "python.yml"
+    params:
+        mrsd=f"--mrsd {MRSD}" if MRSD else "",
+        tag=ID_PREFIX,
+        burnin_fraction=BURNIN_FRACTION,
+    shell:
+        """
+        python {SCRIPTS_DIR}/summarize_jumps.py \
+            --jump-history {input.jump_histories} \
+            --trees {input.trees} \
+            --log {input.log} \
+            --trait-json {input.traits_json} \
+            --tag {params.tag} \
+            --prefix-id {ID_PREFIX} \
+            --burnin-fraction {params.burnin_fraction} \
+            --output-prefix {NAME} \
+            {params.mrsd}
+        """
+
+rule plot_event_counts:
+    input:
+        counts=EVENT_COUNTS,
+        scripts=scripts("plot_events.py"),
+    output:
+        f"{NAME}.event_counts.png",
+    conda:
+        ENVS_DIR / "python.yml"
+    shell:
+        """
+        python {SCRIPTS_DIR}/plot_events.py counts \
+            --counts {input.counts} --output {output} --title "{TRAIT_NAME}"
+        """
+
+rule plot_event_dates:
+    input:
+        dates=EVENT_DATES,
+        events=EVENTS,
+        scripts=scripts("plot_events.py"),
+    output:
+        f"{NAME}.event_dates.png",
+    conda:
+        ENVS_DIR / "python.yml"
+    shell:
+        """
+        python {SCRIPTS_DIR}/plot_events.py dates \
+            --dates {input.dates} --events {input.events} --output {output} \
+            --title "{TRAIT_NAME} transition dates"
+        """
+
+rule trait_through_time:
+    """Prevalence over time and the emergence date (TMRCA) of every state."""
+    input:
+        # per-chain files: each chain loses its own burn-in prefix
+        trees=CHAIN_TREES,
+        trait_json=f"{NAME}.traits.json",
+        scripts=scripts("trait_through_time.py", "trait_trees.py", "dates.py", "trait_data.py"),
+    output:
+        prevalence=PREVALENCE,
+        tmrca=TMRCA,
+        tmrca_samples=TMRCA_SAMPLES,
+    conda:
+        ENVS_DIR / "python.yml"
+    params:
+        tag=ID_PREFIX,
+        burnin_fraction=BURNIN_FRACTION,
+        mrsd=f"--mrsd {MRSD}" if MRSD else "",
+    shell:
+        """
+        python {SCRIPTS_DIR}/trait_through_time.py \
+            --trees {input.trees} \
+            --tag {params.tag} \
+            --trait-json {input.trait_json} \
+            --burnin-fraction {params.burnin_fraction} \
+            --output-prefix {NAME} \
+            {params.mrsd}
+        """
+
+rule plot_trait_through_time:
+    input:
+        prevalence=PREVALENCE,
+        tmrca=TMRCA,
+        tmrca_samples=TMRCA_SAMPLES,
+        acquisitions=ACQUISITIONS,
+        scripts=scripts("plot_events.py"),
+    output:
+        THROUGH_TIME_PNG,
+    conda:
+        ENVS_DIR / "python.yml"
+    shell:
+        """
+        python {SCRIPTS_DIR}/plot_events.py through_time \
+            --prevalence {input.prevalence} \
+            --tmrca {input.tmrca} \
+            --tmrca-samples {input.tmrca_samples} \
+            --acquisitions {input.acquisitions} \
+            --output {output} \
+            --title "{TRAIT_NAME} prevalence over time"
+        """
+
+rule plot_trait_arrivals:
+    """Prevalence plus when each state was entered (survives paraphyly)."""
+    input:
+        prevalence=PREVALENCE,
+        events=EVENTS,
+        acquisitions=ACQUISITIONS,
+        tmrca=TMRCA,
+        scripts=scripts("plot_events.py"),
+    output:
+        ARRIVALS_PNG,
+    conda:
+        ENVS_DIR / "python.yml"
+    shell:
+        """
+        python {SCRIPTS_DIR}/plot_events.py arrivals \
+            --prevalence {input.prevalence} \
+            --events {input.events} \
+            --acquisitions {input.acquisitions} \
+            --tmrca {input.tmrca} \
+            --output {output} \
+            --title "{TRAIT_NAME} prevalence and arrivals"
+        """
+
+rule plot_root_states:
+    input:
+        root_states=ROOT_STATES,
+        scripts=scripts("plot_events.py"),
+    output:
+        f"{NAME}.root_states.png",
+    conda:
+        ENVS_DIR / "python.yml"
+    shell:
+        """
+        python {SCRIPTS_DIR}/plot_events.py root \
+            --root-states {input.root_states} --output {output} \
+            --title "{TRAIT_NAME} root state"
         """

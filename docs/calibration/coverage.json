@@ -1,0 +1,62 @@
+{
+  "near_fixation": {
+    "coverage_count": 1.0,
+    "coverage_first_date": 1.0,
+    "coverage_pooled_date": 1.0,
+    "max_count_check_difference": 0.09890109890109888,
+    "mean_p_positive": 0.5837912087912088,
+    "mean_posterior_count": 0.7850274725274725,
+    "mean_true_count": 1.0,
+    "mean_true_root_probability": 0.5302197802197802,
+    "n": 16,
+    "n_failed": 0
+  },
+  "recurrent_gain": {
+    "coverage_count": 1.0,
+    "coverage_first_date": 1.0,
+    "coverage_pooled_date": 0.9333333333333333,
+    "max_count_check_difference": 0.2637362637362637,
+    "mean_p_positive": 0.6622710622710622,
+    "mean_posterior_count": 2.3494505494505495,
+    "mean_true_count": 2.466666666666667,
+    "mean_true_root_probability": 0.3648351648351648,
+    "n": 15,
+    "n_failed": 1
+  },
+  "single_gain": {
+    "coverage_count": 1.0,
+    "coverage_first_date": 1.0,
+    "coverage_pooled_date": 1.0,
+    "max_count_check_difference": 0.09890109890109888,
+    "mean_p_positive": 0.6820054945054945,
+    "mean_posterior_count": 0.9196428571428571,
+    "mean_true_count": 1.0,
+    "mean_true_root_probability": 0.6195054945054945,
+    "n": 16,
+    "n_failed": 0
+  },
+  "single_loss": {
+    "coverage_count": 1.0,
+    "coverage_first_date": 1.0,
+    "coverage_pooled_date": 1.0,
+    "max_count_check_difference": 0.1428571428571428,
+    "mean_p_positive": 0.6923076923076923,
+    "mean_posterior_count": 0.8832417582417582,
+    "mean_true_count": 1.0,
+    "mean_true_root_probability": 0.6243131868131868,
+    "n": 16,
+    "n_failed": 0
+  },
+  "sparse": {
+    "coverage_count": 1.0,
+    "coverage_first_date": 1.0,
+    "coverage_pooled_date": 1.0,
+    "max_count_check_difference": 0.20879120879120894,
+    "mean_p_positive": 0.7435897435897435,
+    "mean_posterior_count": 1.520879120879121,
+    "mean_true_count": 1.0,
+    "mean_true_root_probability": 0.5853479853479854,
+    "n": 15,
+    "n_failed": 1
+  }
+}

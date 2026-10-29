@@ -1,9 +1,0 @@
-trees: null
-index: 1
-prefix: "dta"
-mrsd: null
-template: null
-beast:
-  threads: 4
-  samples: 10000
-  chain_length: 50000000

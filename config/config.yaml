@@ -1,0 +1,94 @@
+# DTA configuration.
+#
+# A trait is any categorical genome feature.  There is one analysis; the only
+# thing that changes between runs is where its states come from: an annotation
+# sheet (`trait_source: table`) or the taxon labels (`trait_source: label`,
+# which is how the geographic analyses work).
+#
+# Every key can be set on the command line as `dta run --<key-with-dashes>`;
+# snk.yaml annotates the subset that appears in `dta run --help`.  You can also
+# override the whole file with `dta run --config my.yaml`.
+#
+# The defaults below run the simulated example shipped in resources/ (which snk
+# copies into the working directory at run time).
+
+# ---- inputs and outputs ---------------------------------------------------
+# NEXUS file of dated trees (branch lengths in years before `mrsd`).
+input_trees: resources/simulated.trees
+# Every artefact is written as <prefix>.<something>.
+prefix: results/simulated
+# Most recent sampling date, YYYY-MM-DD.  Needed for calendar dates: transition
+# dates, prevalence over time and TMRCAs.  Read off the newest tip date in the
+# input tree labels when left null; set it to override (a mismatch is reported).
+mrsd: "2021-06-30"
+# Optional custom Jinja2 BEAST template.
+template: null
+
+# ---- the trait ------------------------------------------------------------
+# "label": the state is a field of each taxon label (geography).
+# "table": the state comes from an annotation sheet (`trait_data`).
+trait_source: table
+# Trait name; becomes the BEAST id prefix and the tree annotation tag.
+trait: cfrD
+# Annotation sheet with one row per taxon (`taxon,state`); used by source "table".
+trait_data: resources/simulated.traits.csv
+# equal (symmetric/ER) | asymmetric | bssvs
+trait_model: asymmetric
+# uniform | empirical | fixed:<state>
+trait_root_state: uniform
+# Optional state order, e.g. "0,1"; otherwise sorted from the observations.
+trait_states: null
+# "safe" rewrites numeric state codes (0 -> s0) because BEAST 1.10's
+# completeHistoryLogger cannot log them; "as-is" leaves them alone.
+trait_state_code_style: safe
+# How a tree label is matched to a sheet row: exact | field | regex.
+trait_match_mode: exact
+trait_taxon_column: null
+trait_state_column: null
+trait_taxon_regex: null
+# Source "label": which `|`-separated field of the taxon label holds the state.
+trait_label_delimiter: "|"
+trait_label_index: 1
+# What to do with taxa that have no observation: unknown (code as "?") | error.
+trait_on_missing: unknown
+# BEAST id prefix / ordered pair register prefix (default: the trait name).
+trait_id_prefix: null
+trait_pair_prefix: null
+# Priors; null uses the pipeline defaults.
+trait_clock_rate: null
+trait_clock_prior_shape: null
+trait_clock_prior_scale: null
+trait_rate_prior_shape: null
+trait_rate_prior_scale: null
+trait_bssvs_prior_mean: null
+
+# ---- analysis -------------------------------------------------------------
+# Fraction of posterior samples discarded as burn-in by the summaries.  It is
+# applied to each chain separately, and the chains are combined after trimming.
+burnin_fraction: 0.1
+# Fraction of the leading trees in `input_trees` dropped before BEAST samples
+# from them: an upstream tree posterior starts with its unconverged samples, and
+# BEAST gives every tree left in the file the same weight.
+input_burnin_fraction: 0.1
+# Sample every individual transition and annotate every branch with its sampled
+# history: this is what makes transition dates and prevalence over time
+# possible.  Disabling it shrinks the tree log, but prevalence then falls back
+# to the reconstructed node states.
+log_complete_history: true
+# Extension of the R-rendered figures.  ".svg" needs a cairo-capable R (the
+# conda environment provides one); ".png" also works on macOS with quartz.
+figure_ext: ".svg"
+
+# ---- BEAST ----------------------------------------------------------------
+# BEAST executable on PATH (the conda environment provides it).
+beast_bin: beast
+# Add "-beagle_GPU" (or "-beagle_SSE") to accelerate with BEAGLE; the default
+# works on any machine.
+beast_flags: "-working -overwrite"
+beast_threads: 4
+beast_chain_length: 50000000
+beast_samples: 10000
+# Independent MCMC chains, combined with BEAST's logcombiner.
+beast_chains: 1
+# Fixed RNG seed, useful for reproducible runs and tests.
+beast_seed: null
